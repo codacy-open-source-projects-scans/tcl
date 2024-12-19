@@ -1146,7 +1146,7 @@ CleanupByteCode(
 
     if (iPtr) {
 	Tcl_HashEntry *hePtr = Tcl_FindHashEntry(iPtr->lineBCPtr,
-		(char *) codePtr);
+		codePtr);
 
 	if (hePtr) {
 	    ReleaseCmdWordData((ExtCmdLoc *)Tcl_GetHashValue(hePtr));
@@ -2194,7 +2194,7 @@ TclCompileScript(
 		    "Script length %" TCL_SIZE_MODIFIER
 		    "d exceeds max permitted length %d.",
 		    numBytes, INT_MAX-1));
-	    Tcl_SetErrorCode(interp, "TCL", "LIMIT", "SCRIPTLENGTH", (void *)NULL);
+	    Tcl_SetErrorCode(interp, "TCL", "LIMIT", "SCRIPTLENGTH", (char *)NULL);
 	    TclCompileSyntaxError(interp, envPtr);
 	    return;
 	}

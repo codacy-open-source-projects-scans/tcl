@@ -319,7 +319,7 @@ TraceExecutionObjCmd(
 		    "bad operation list \"\": must be one or more of"
 		    " enter, leave, enterstep, or leavestep", -1));
 	    Tcl_SetErrorCode(interp, "TCL", "OPERATION", "TRACE", "NOOPS",
-		    (void *)NULL);
+		    (char *)NULL);
 	    return TCL_ERROR;
 	}
 	result = TclListObjGetElements(interp, objv[4], &listLen, &elemPtrs);
@@ -561,7 +561,7 @@ TraceCommandObjCmd(
 		    "bad operation list \"\": must be one or more of"
 		    " delete or rename", -1));
 	    Tcl_SetErrorCode(interp, "TCL", "OPERATION", "TRACE", "NOOPS",
-		    (void *)NULL);
+		    (char *)NULL);
 	    return TCL_ERROR;
 	}
 	result = TclListObjGetElements(interp, objv[4], &listLen, &elemPtrs);
@@ -760,7 +760,7 @@ TraceVariableObjCmd(
 		    "bad operation list \"\": must be one or more of"
 		    " array, read, unset, or write", -1));
 	    Tcl_SetErrorCode(interp, "TCL", "OPERATION", "TRACE", "NOOPS",
-		    (void *)NULL);
+		    (char *)NULL);
 	    return TCL_ERROR;
 	}
 	result = TclListObjGetElements(interp, objv[4], &listLen, &elemPtrs);
@@ -2568,7 +2568,7 @@ TclCallVarTraces(
     Tcl_Preserve(iPtr);
     if (arrayPtr && !TclIsVarTraceActive(arrayPtr)
 	    && (arrayPtr->flags & traceflags)) {
-	hPtr = Tcl_FindHashEntry(&iPtr->varTraces, (char *) arrayPtr);
+	hPtr = Tcl_FindHashEntry(&iPtr->varTraces, arrayPtr);
 	active.varPtr = arrayPtr;
 	for (tracePtr = (VarTrace *)Tcl_GetHashValue(hPtr);
 		tracePtr != NULL; tracePtr = active.nextTracePtr) {
@@ -2610,7 +2610,7 @@ TclCallVarTraces(
     }
     active.varPtr = varPtr;
     if (varPtr->flags & traceflags) {
-	hPtr = Tcl_FindHashEntry(&iPtr->varTraces, (char *) varPtr);
+	hPtr = Tcl_FindHashEntry(&iPtr->varTraces, varPtr);
 	for (tracePtr = (VarTrace *)Tcl_GetHashValue(hPtr);
 		tracePtr != NULL; tracePtr = active.nextTracePtr) {
 	    active.nextTracePtr = tracePtr->nextPtr;
@@ -2807,7 +2807,7 @@ Tcl_UntraceVar2(
 	  TCL_TRACE_ARRAY | TCL_TRACE_RESULT_DYNAMIC | TCL_TRACE_RESULT_OBJECT;
     flags &= flagMask;
 
-    hPtr = Tcl_FindHashEntry(&iPtr->varTraces, (char *) varPtr);
+    hPtr = Tcl_FindHashEntry(&iPtr->varTraces, varPtr);
     for (tracePtr = (VarTrace *)Tcl_GetHashValue(hPtr), prevPtr = NULL; ;
 	    prevPtr = tracePtr, tracePtr = tracePtr->nextPtr) {
 	if (tracePtr == NULL) {
@@ -2921,7 +2921,7 @@ Tcl_VarTraceInfo2(
      * Find the relevant trace, if any, and return its clientData.
      */
 
-    hPtr = Tcl_FindHashEntry(&iPtr->varTraces, (char *) varPtr);
+    hPtr = Tcl_FindHashEntry(&iPtr->varTraces, varPtr);
 
     if (hPtr) {
 	VarTrace *tracePtr = (VarTrace *)Tcl_GetHashValue(hPtr);

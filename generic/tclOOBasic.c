@@ -157,7 +157,7 @@ DecrRefsPostClassConstructor(
     TclDecrRefCount(invoke[0]);
     TclDecrRefCount(invoke[1]);
     TclDecrRefCount(invoke[2]);
-    invoke[0] = Tcl_NewStringObj("::oo::MixinClassDelegates", TCL_AUTO_LENGTH);
+    invoke[0] = oPtr->fPtr->mcdName;
     invoke[1] = TclOOObjectName(interp, oPtr);
     Tcl_IncrRefCount(invoke[0]);
     Tcl_IncrRefCount(invoke[1]);
@@ -618,7 +618,7 @@ TclOO_Object_Unknown(
 	Tcl_AppendToObj(errorMsg, " or ", TCL_AUTO_LENGTH);
     }
     Tcl_AppendToObj(errorMsg, methodNames[i], TCL_AUTO_LENGTH);
-    Tcl_Free((void *) methodNames);
+    Tcl_Free((void *)methodNames);
     Tcl_SetObjResult(interp, errorMsg);
     Tcl_SetErrorCode(interp, "TCL", "LOOKUP", "METHOD",
 	    TclGetString(objv[skip]), (char *)NULL);

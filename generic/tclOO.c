@@ -366,12 +366,14 @@ InitFoundation(
     TclNewLiteralStringObj(fPtr->clonedName, "<cloned>");
     TclNewLiteralStringObj(fPtr->defineName, "::oo::define");
     TclNewLiteralStringObj(fPtr->myName, "my");
+    TclNewLiteralStringObj(fPtr->mcdName, "::oo::MixinClassDelegates");
     Tcl_IncrRefCount(fPtr->unknownMethodNameObj);
     Tcl_IncrRefCount(fPtr->constructorName);
     Tcl_IncrRefCount(fPtr->destructorName);
     Tcl_IncrRefCount(fPtr->clonedName);
     Tcl_IncrRefCount(fPtr->defineName);
     Tcl_IncrRefCount(fPtr->myName);
+    Tcl_IncrRefCount(fPtr->mcdName);
 
     TclCreateObjCommandInNs(interp, "UnknownDefinition", fPtr->ooNs,
 	    TclOOUnknownDefinition, NULL, NULL);
@@ -405,12 +407,8 @@ InitFoundation(
      * Basic method declarations for the core classes.
      */
 
-    for (i = 0 ; objMethods[i].name ; i++) {
-	TclOONewBasicMethod(fPtr->objectCls, &objMethods[i]);
-    }
-    for (i = 0 ; clsMethods[i].name ; i++) {
-	TclOONewBasicMethod(fPtr->classCls, &clsMethods[i]);
-    }
+    TclOODefineBasicMethods(fPtr->objectCls, objMethods);
+    TclOODefineBasicMethods(fPtr->classCls, clsMethods);
 
     /*
      * Finish setting up the class of classes by marking the 'new' method as
@@ -458,9 +456,7 @@ InitFoundation(
     Tcl_Object cfgCls = Tcl_NewObjectInstance(interp,
 	    (Tcl_Class) fPtr->classCls, "::oo::configuresupport::configurable",
 	    NULL, TCL_INDEX_NONE, NULL, 0);
-    for (i = 0 ; cfgMethods[i].name ; i++) {
-	TclOONewBasicMethod(((Object *) cfgCls)->classPtr, &cfgMethods[i]);
-    }
+    TclOODefineBasicMethods(((Object *) cfgCls)->classPtr, cfgMethods);
 
     /*
      * Don't have handles to these namespaces, so use Tcl_CreateObjCommand.
@@ -616,6 +612,7 @@ KillFoundation(
     TclDecrRefCount(fPtr->clonedName);
     TclDecrRefCount(fPtr->defineName);
     TclDecrRefCount(fPtr->myName);
+    TclDecrRefCount(fPtr->mcdName);
     TclOODecrRefCount(fPtr->objectCls->thisPtr);
     TclOODecrRefCount(fPtr->classCls->thisPtr);
 
@@ -1124,6 +1121,10 @@ TclOOReleaseClassContents(
     }
 
     FOREACH_HASH_VALUE(mPtr, &clsPtr->classMethods) {
+	/* instance gets deleted, so if method remains, reset it there */
+	if (mPtr->refCount > 1 && mPtr->declaringClassPtr == clsPtr) {
+	    mPtr->declaringClassPtr = NULL;
+	}
 	TclOODelMethodRef(mPtr);
     }
     Tcl_DeleteHashTable(&clsPtr->classMethods);
@@ -1175,7 +1176,7 @@ ObjectNamespaceDeleted(
     Method *mPtr;
     Tcl_Obj *filterObj, *variableObj;
     PrivateVariableMapping *privateVariable;
-    Tcl_Interp *interp = oPtr->fPtr->interp;
+    Tcl_Interp *interp = fPtr->interp;
     Tcl_Size i;
 
     if (Destructing(oPtr)) {
@@ -1213,12 +1214,12 @@ ObjectNamespaceDeleted(
     if (!Tcl_InterpDeleted(interp) && !(oPtr->flags & DESTRUCTOR_CALLED)) {
 	CallContext *contextPtr =
 		TclOOGetCallContext(oPtr, NULL, DESTRUCTOR, NULL, NULL, NULL);
-	int result;
-	Tcl_InterpState state;
 
 	oPtr->flags |= DESTRUCTOR_CALLED;
-
 	if (contextPtr != NULL) {
+	    int result;
+	    Tcl_InterpState state;
+
 	    contextPtr->callPtr->flags |= DESTRUCTOR;
 	    contextPtr->skip = 0;
 	    state = Tcl_SaveInterpState(interp, TCL_OK);
@@ -1287,6 +1288,10 @@ ObjectNamespaceDeleted(
 
     if (oPtr->methodsPtr) {
 	FOREACH_HASH_VALUE(mPtr, oPtr->methodsPtr) {
+	    /* instance gets deleted, so if method remains, reset it there */
+	    if (mPtr->refCount > 1 && mPtr->declaringObjectPtr == oPtr) {
+		mPtr->declaringObjectPtr = NULL;
+	    }
 	    TclOODelMethodRef(mPtr);
 	}
 	Tcl_DeleteHashTable(oPtr->methodsPtr);

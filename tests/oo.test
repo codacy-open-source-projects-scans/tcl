@@ -437,6 +437,66 @@ test oo-1.23 {basic test of OO functionality: deep nested ownership} -setup {
 } -cleanup {
     parent destroy
 } -result 0
+test oo-1.24 {basic test of OO functionality: deep nested ownership} -setup {
+    oo::class create parent
+} -constraints knownBug -body {
+    oo::class create abc {
+	superclass parent
+	self method make {} {oo::copy [self] xyz}
+    }
+    apply {n {
+	# Make a lot of "nested" objects
+	set base abc
+	lappend lst $base [info object namespace $base]
+	for {set i 1; set obj $base} {$i < $n} {incr i} {
+	     set obj [$obj make]
+	     lappend lst $obj [info object namespace $obj]
+	}
+	# Kill them all in one go; should not crash!
+	$base destroy
+	# How many classes still there (cnt must remain 0)
+	set cnt 0
+	foreach {obj ns} $lst {
+	    if {[namespace which -command $obj] ne "" || [namespace exists $ns]} {
+		incr cnt
+	    }
+	}
+	return $cnt
+    }} 10000
+} -cleanup {
+    parent destroy
+} -result 0
+
+test oo-1.25 {basic test of OO functionality: touch method after instance deletion, bug [0b809cd3fc8b6e5e]} -body {
+    set ::result {}
+    # test for eval and deletion of coro, in both cases the coroutine shall be deleted
+    foreach v {"eval" "del"} {
+	# 1st (deleted class)
+	oo::class create A
+	oo::define A method retard-it {} {yield}
+	coroutine tcoro [A new] retard-it
+	trace add command tcoro delete {apply {{args} {lappend ::result D}}}
+	A destroy
+	if {$v eq "eval"} { tcoro } else { rename tcoro {} }
+	# 2nd (deleted object of class)
+	oo::class create A
+	oo::define A method retard-it {} {yield}
+	set obj [A new]
+	coroutine tcoro $obj retard-it
+	trace add command tcoro delete {apply {{args} {lappend ::result D}}}
+	$obj destroy
+	if {$v eq "eval"} { tcoro } else { rename tcoro {} }
+	A destroy
+	# 3rd  (deleted object)
+	set obj [oo::object new]
+	oo::objdefine $obj method retard-it {} {yield}
+	coroutine tcoro $obj retard-it
+	trace add command tcoro delete {apply {{args} {lappend ::result D}}}
+	$obj destroy
+	if {$v eq "eval"} { tcoro } else { rename tcoro {} }
+    }
+    set ::result
+} -result [lrepeat 6 D]
 
 test oo-2.1 {basic test of OO functionality: constructor} -setup {
     # This is a bit complex because it needs to run in a sub-interp as

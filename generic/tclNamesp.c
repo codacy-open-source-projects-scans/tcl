@@ -1083,7 +1083,7 @@ Tcl_DeleteNamespace(
 
 	nsPtr->ensembles = (Tcl_Ensemble *) ensemblePtr->next;
 	ensemblePtr->next = ensemblePtr;
-	Tcl_DeleteCommandFromToken(nsPtr->interp, ensemblePtr->token);
+	Tcl_DeleteCommandFromToken(interp, ensemblePtr->token);
     }
 
     /*
@@ -1162,8 +1162,8 @@ Tcl_DeleteNamespace(
 	     * Restore the ::errorInfo and ::errorCode traces.
 	     */
 
-	    EstablishErrorInfoTraces(NULL, nsPtr->interp, NULL, NULL, 0);
-	    EstablishErrorCodeTraces(NULL, nsPtr->interp, NULL, NULL, 0);
+	    EstablishErrorInfoTraces(NULL, interp, NULL, NULL, 0);
+	    EstablishErrorCodeTraces(NULL, interp, NULL, NULL, 0);
 
 	    /*
 	     * We didn't really kill it, so remove the KILLED marks, so it can
@@ -3192,7 +3192,10 @@ NamespaceChildrenCmd(
 	if (strncmp(pattern, nsPtr->fullName, length) != 0) {
 	    goto searchDone;
 	}
-	if (FindChildEntry(nsPtr, pattern+length) != NULL) {
+	/*
+	 * Global namespace members are prefixed with "::", others not. Ticket [63449c0514]
+	 */
+	if (FindChildEntry(nsPtr, (nsPtr != globalNsPtr ? 2 : 0) + pattern+length) != NULL) {
 	    Tcl_ListObjAppendElement(NULL, listPtr,
 		    Tcl_NewStringObj(pattern, -1));
 	}
