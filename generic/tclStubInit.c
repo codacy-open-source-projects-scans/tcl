@@ -75,6 +75,8 @@
 #   define Tcl_NRCallObjProc 0
 #   define Tcl_NRCreateCommand 0
 #   define TclGetObjInterpProc 0
+#   define Tcl_QueryTimeProc 0
+#   define Tcl_SetTimeProc 0
 #endif
 
 #define TclUtfCharComplete Tcl_UtfCharComplete
@@ -1156,9 +1158,9 @@ const TclStubs tclStubs = {
     Tcl_UtfToUpper, /* 337 */
     Tcl_WriteChars, /* 338 */
     Tcl_WriteObj, /* 339 */
-    0, /* 340 */
-    0, /* 341 */
-    0, /* 342 */
+    Tcl_GetMonotonicTime, /* 340 */
+    Tcl_CreateTimerHandlerMicroSeconds, /* 341 */
+    Tcl_SleepMicroSeconds, /* 342 */
     Tcl_AlertNotifier, /* 343 */
     Tcl_ServiceModeHook, /* 344 */
     Tcl_UniCharIsAlnum, /* 345 */

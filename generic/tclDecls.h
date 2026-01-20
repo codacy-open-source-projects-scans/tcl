@@ -37,6 +37,8 @@
 #   define Tcl_ObjCmdProc void
 #   define Tcl_CmdTraceProc void
 #   define Tcl_CmdObjTraceProc void
+#   define Tcl_GetTimeProc void
+#   define Tcl_ScaleTimeProc void
 #endif /* TCL_NO_DEPRECATED */
 
 /*
@@ -899,9 +901,14 @@ EXTERN Tcl_Size		Tcl_WriteChars(Tcl_Channel chan, const char *src,
 				Tcl_Size srcLen);
 /* 339 */
 EXTERN Tcl_Size		Tcl_WriteObj(Tcl_Channel chan, Tcl_Obj *objPtr);
-/* Slot 340 is reserved */
-/* Slot 341 is reserved */
-/* Slot 342 is reserved */
+/* 340 */
+EXTERN long long	Tcl_GetMonotonicTime(void);
+/* 341 */
+EXTERN Tcl_TimerToken	Tcl_CreateTimerHandlerMicroSeconds(
+				long long microSeconds, Tcl_TimerProc *proc,
+				void *clientData);
+/* 342 */
+EXTERN void		Tcl_SleepMicroSeconds(long long microSeconds);
 /* 343 */
 EXTERN void		Tcl_AlertNotifier(void *clientData);
 /* 344 */
@@ -1466,11 +1473,13 @@ EXTERN int		Tcl_GetEnsembleNamespace(Tcl_Interp *interp,
 				Tcl_Command token,
 				Tcl_Namespace **namespacePtrPtr);
 /* 552 */
-EXTERN void		Tcl_SetTimeProc(Tcl_GetTimeProc *getProc,
+TCL_DEPRECATED("No longer supported")
+void			Tcl_SetTimeProc(Tcl_GetTimeProc *getProc,
 				Tcl_ScaleTimeProc *scaleProc,
 				void *clientData);
 /* 553 */
-EXTERN void		Tcl_QueryTimeProc(Tcl_GetTimeProc **getProc,
+TCL_DEPRECATED("No longer supported")
+void			Tcl_QueryTimeProc(Tcl_GetTimeProc **getProc,
 				Tcl_ScaleTimeProc **scaleProc,
 				void **clientData);
 /* 554 */
@@ -2269,9 +2278,9 @@ typedef struct TclStubs {
     Tcl_Size (*tcl_UtfToUpper) (char *src); /* 337 */
     Tcl_Size (*tcl_WriteChars) (Tcl_Channel chan, const char *src, Tcl_Size srcLen); /* 338 */
     Tcl_Size (*tcl_WriteObj) (Tcl_Channel chan, Tcl_Obj *objPtr); /* 339 */
-    void (*reserved340)(void);
-    void (*reserved341)(void);
-    void (*reserved342)(void);
+    long long (*tcl_GetMonotonicTime) (void); /* 340 */
+    Tcl_TimerToken (*tcl_CreateTimerHandlerMicroSeconds) (long long microSeconds, Tcl_TimerProc *proc, void *clientData); /* 341 */
+    void (*tcl_SleepMicroSeconds) (long long microSeconds); /* 342 */
     void (*tcl_AlertNotifier) (void *clientData); /* 343 */
     void (*tcl_ServiceModeHook) (int mode); /* 344 */
     int (*tcl_UniCharIsAlnum) (int ch); /* 345 */
@@ -2481,8 +2490,8 @@ typedef struct TclStubs {
     int (*tcl_GetEnsembleUnknownHandler) (Tcl_Interp *interp, Tcl_Command token, Tcl_Obj **unknownListPtr); /* 549 */
     int (*tcl_GetEnsembleFlags) (Tcl_Interp *interp, Tcl_Command token, int *flagsPtr); /* 550 */
     int (*tcl_GetEnsembleNamespace) (Tcl_Interp *interp, Tcl_Command token, Tcl_Namespace **namespacePtrPtr); /* 551 */
-    void (*tcl_SetTimeProc) (Tcl_GetTimeProc *getProc, Tcl_ScaleTimeProc *scaleProc, void *clientData); /* 552 */
-    void (*tcl_QueryTimeProc) (Tcl_GetTimeProc **getProc, Tcl_ScaleTimeProc **scaleProc, void **clientData); /* 553 */
+    TCL_DEPRECATED_API("No longer supported") void (*tcl_SetTimeProc) (Tcl_GetTimeProc *getProc, Tcl_ScaleTimeProc *scaleProc, void *clientData); /* 552 */
+    TCL_DEPRECATED_API("No longer supported") void (*tcl_QueryTimeProc) (Tcl_GetTimeProc **getProc, Tcl_ScaleTimeProc **scaleProc, void **clientData); /* 553 */
     Tcl_DriverThreadActionProc * (*tcl_ChannelThreadActionProc) (const Tcl_ChannelType *chanTypePtr); /* 554 */
     Tcl_Obj * (*tcl_NewBignumObj) (void *value); /* 555 */
     Tcl_Obj * (*tcl_DbNewBignumObj) (void *value, const char *file, int line); /* 556 */
@@ -3271,9 +3280,12 @@ extern const TclStubs *tclStubsPtr;
 	(tclStubsPtr->tcl_WriteChars) /* 338 */
 #define Tcl_WriteObj \
 	(tclStubsPtr->tcl_WriteObj) /* 339 */
-/* Slot 340 is reserved */
-/* Slot 341 is reserved */
-/* Slot 342 is reserved */
+#define Tcl_GetMonotonicTime \
+	(tclStubsPtr->tcl_GetMonotonicTime) /* 340 */
+#define Tcl_CreateTimerHandlerMicroSeconds \
+	(tclStubsPtr->tcl_CreateTimerHandlerMicroSeconds) /* 341 */
+#define Tcl_SleepMicroSeconds \
+	(tclStubsPtr->tcl_SleepMicroSeconds) /* 342 */
 #define Tcl_AlertNotifier \
 	(tclStubsPtr->tcl_AlertNotifier) /* 343 */
 #define Tcl_ServiceModeHook \
@@ -4372,5 +4384,11 @@ extern const TclStubs *tclStubsPtr;
 #if TCL_MINOR_VERSION < 1
 #   undef Tcl_IsEmpty
 #endif
+#ifdef TCL_NO_DEPRECATED
+#   undef Tcl_QueryTimeProc
+#   undef Tcl_ScaleTimeProc
+#   undef Tcl_SetTimeProc
+#   undef Tcl_GetTimeProc
+#endif /* TCL_NO_DEPRECATED */
 
 #endif /* _TCLDECLS */
