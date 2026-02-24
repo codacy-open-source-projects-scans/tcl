@@ -6405,19 +6405,17 @@ ReadChars(
 		    return -1;
 		}
 
-		{
-		    /*
-		     * There are chars leading the buffer before the eof char.
-		     * Adjust the dstLimit so we go back and read only those
-		     * and do not encounter the eof char this time.
-		     */
+		/*
+		 * There are chars leading the buffer before the eof char.
+		 * Adjust the dstLimit so we go back and read only those
+		 * and do not encounter the eof char this time.
+		 */
 
-		    dstLimit = dstRead + (TCL_UTF_MAX - 1);
-		    statePtr->flags = savedFlags;
-		    statePtr->inputEncodingFlags = savedIEFlags;
-		    statePtr->inputEncodingState = savedState;
-		    continue;
-		}
+		dstLimit = dstRead + (TCL_UTF_MAX - 1);
+		statePtr->flags = savedFlags;
+		statePtr->inputEncodingFlags = savedIEFlags;
+		statePtr->inputEncodingState = savedState;
+		continue;
 	    }
 
 	    /*
@@ -6453,7 +6451,7 @@ ReadChars(
 	     * we only have the one decoded char?
 	     */
 
-	    if (1 || code != TCL_OK) {
+	    {
 		int read, decoded, count;
 		char buffer[TCL_UTF_MAX + 1];
 
@@ -6509,16 +6507,6 @@ ReadChars(
 		    Tcl_SetObjLength(objPtr, numBytes + 1);
 		    return 1;
 		}
-	    } else if (GotFlag(statePtr, CHANNEL_EOF)) {
-		/*
-		 * The bare \r is the only char and we will never read a
-		 * subsequent char to make the determination.
-		 */
-
-		dst[0] = '\r';
-		bufPtr->nextRemoved = bufPtr->nextAdded;
-		Tcl_SetObjLength(objPtr, numBytes + 1);
-		return 1;
 	    }
 
 	    /*
