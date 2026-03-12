@@ -158,7 +158,7 @@ typedef struct {
 
 /*
  * Limit callbacks handled by scripts are modelled as structures which are
- * stored in hashes indexed by a two-word key. 
+ * stored in hashes indexed by a two- or three-word key.
  */
 
 typedef struct {
@@ -174,19 +174,11 @@ typedef struct {
 				 * table. */
 } ScriptLimitCallback;
 
-/*
- * ScriptLimitCallbackKey is the key used in the hash table storing callbacks.
- * Such hash table keys must NOT have any pad bytes and therefore the "type"
- * field is defined as intptr_t. Its real type is int but that introduces
- * trailing pad bytes resulting in valgrind errors. intptr_t is always (?)
- * same size as a pointer and will not have this padding issue. Details at
- * https://core.tcl-lang.org/tcl/info/f7495f63c01ea800
- */
 typedef struct {
     Tcl_Interp *interp;		/* The interpreter that the limit callback was
 				 * attached to. This is not the interpreter
 				 * that the callback runs in! */
-    intptr_t type;		/* The type of callback that this is. */
+    int type;			/* The type of callback that this is. */
 } ScriptLimitCallbackKey;
 
 /*
@@ -3828,18 +3820,14 @@ Tcl_LimitCheck(
     if ((iPtr->limit.active & TCL_LIMIT_TIME) &&
 	    ((iPtr->limit.timeGranularity == 1) ||
 		(ticker % iPtr->limit.timeGranularity == 0))) {
-	Tcl_Time now;
+	long long now;
 
-	Tcl_GetTime(&now);
-	if (iPtr->limit.time.sec < now.sec ||
-		(iPtr->limit.time.sec == now.sec &&
-		iPtr->limit.time.usec < now.usec)) {
+	now = TclpGetMicroseconds();
+	if (iPtr->limit.time <= now) {
 	    iPtr->limit.exceeded |= TCL_LIMIT_TIME;
 	    Tcl_Preserve(interp);
 	    RunLimitHandlers(iPtr->limit.timeHandlers, interp);
-	    if (iPtr->limit.time.sec > now.sec ||
-		    (iPtr->limit.time.sec == now.sec &&
-		    iPtr->limit.time.usec >= now.usec)) {
+	    if (iPtr->limit.time >= now) {
 		iPtr->limit.exceeded &= ~TCL_LIMIT_TIME;
 	    } else if (iPtr->limit.exceeded & TCL_LIMIT_TIME) {
 		Tcl_SetObjResult(interp, Tcl_NewStringObj(
@@ -4384,15 +4372,17 @@ Tcl_LimitSetTime(
     Interp *iPtr = (Interp *) interp;
     long long nextMoment;
 
-    iPtr->limit.time = *timeLimitPtr;
     if (iPtr->limit.timeEvent != NULL) {
 	Tcl_DeleteTimerHandler(iPtr->limit.timeEvent);
     }
     if (timeLimitPtr->sec >= LLONG_MAX / 1000000 + 10) {
 	nextMoment = LLONG_MAX;
+	iPtr->limit.time = nextMoment;
     } else {
 	nextMoment = timeLimitPtr->sec * 1000000 +
-		(timeLimitPtr->usec % 1000000) + 10;
+		(timeLimitPtr->usec % 1000000);
+	iPtr->limit.time = nextMoment;
+	nextMoment += 10;
     }
 
     iPtr->limit.timeEvent = TclCreateAbsoluteTimerHandler(nextMoment,
@@ -4469,7 +4459,8 @@ Tcl_LimitGetTime(
 {
     Interp *iPtr = (Interp *) interp;
 
-    *timeLimitPtr = iPtr->limit.time;
+	timeLimitPtr->sec = iPtr->limit.time / 1000000;
+    timeLimitPtr->usec = iPtr->limit.time % 1000000;
 }
 
 /*
@@ -4716,7 +4707,7 @@ TclRemoveScriptLimitCallbacks(
     while (hashPtr != NULL) {
 	keyPtr = (ScriptLimitCallbackKey *)
 		Tcl_GetHashKey(&iPtr->limit.callbacks, hashPtr);
-	Tcl_LimitRemoveHandler(keyPtr->interp, (int) keyPtr->type,
+	Tcl_LimitRemoveHandler(keyPtr->interp, keyPtr->type,
 		CallScriptLimitCallback, Tcl_GetHashValue(hashPtr));
 	hashPtr = Tcl_NextHashEntry(&search);
     }
@@ -4753,12 +4744,14 @@ TclInitLimitSupport(
     iPtr->limit.cmdCount = 0;
     iPtr->limit.cmdHandlers = NULL;
     iPtr->limit.cmdGranularity = 1;
-    memset(&iPtr->limit.time, 0, sizeof(Tcl_Time));
+    iPtr->limit.time = 0;
     iPtr->limit.timeHandlers = NULL;
     iPtr->limit.timeEvent = NULL;
     iPtr->limit.timeGranularity = 10;
+    /* See [f7495f63c0]: Don't use sizeof(ScriptLimitCallbackKey) here, because it
+     * counts the end padding as well */
     Tcl_InitHashTable(&iPtr->limit.callbacks,
-	    sizeof(ScriptLimitCallbackKey) / sizeof(int));
+	    offsetof(ScriptLimitCallbackKey, type) / sizeof(int) + 1);
 }
 
 /*
