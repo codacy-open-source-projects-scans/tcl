@@ -250,6 +250,7 @@ const EnsembleImplMap tclZlibImplMap[] = {
  *----------------------------------------------------------------------
  *
  * Latin1 --
+ *
  *	Helper to definitely get the ISO 8859-1 encoding. It's internally
  *	defined by Tcl so this operation should always succeed.
  *
@@ -720,7 +721,6 @@ Tcl_ZlibStreamInit(
     int wbits = 0;
     int e;
     ZlibStreamHandle *zshPtr = NULL;
-    Tcl_DString cmdname;
     GzipHeader *gzHeaderPtr = NULL;
 
     switch (mode) {
@@ -808,6 +808,7 @@ Tcl_ZlibStreamInit(
     zshPtr->streamEnd = 0;
     zshPtr->compDictObj = NULL;
     zshPtr->flags = 0;
+    zshPtr->cmd = NULL;
     zshPtr->gzHeaderPtr = gzHeaderPtr;
     memset(&zshPtr->stream, 0, sizeof(z_stream));
     zshPtr->stream.adler = 1;
@@ -837,39 +838,57 @@ Tcl_ZlibStreamInit(
     }
 
     /*
-     * I could do all this in C, but this is easier.
+     * If we have an interp, we bind the stream to a command.
      */
 
     if (interp != NULL) {
-	if (Tcl_EvalEx(interp, "::incr ::tcl::zlib::cmdcounter",
-		TCL_AUTO_LENGTH, 0) != TCL_OK) {
-	    goto error;
-	}
-	Tcl_DStringInit(&cmdname);
-	TclDStringAppendLiteral(&cmdname, "::tcl::zlib::streamcmd_");
-	TclDStringAppendObj(&cmdname, Tcl_GetObjResult(interp));
-	if (Tcl_FindCommand(interp, Tcl_DStringValue(&cmdname),
-		NULL, 0) != NULL) {
-	    Tcl_SetObjResult(interp, Tcl_NewStringObj(
-		    "BUG: Stream command name already exists", TCL_AUTO_LENGTH));
-	    Tcl_SetErrorCode(interp, "TCL", "BUG", "EXISTING_CMD", (char *)NULL);
-	    Tcl_DStringFree(&cmdname);
-	    goto error;
-	}
-	Tcl_ResetResult(interp);
+	const char *name = NULL;
+	Tcl_DString cmdName;
+	Tcl_Obj *cmdCounter, *one;
 
 	/*
-	 * Create the command.
+	 * Scan to find a free command name with the right prefix in the
+	 * right namespace.
 	 */
 
-	zshPtr->cmd = Tcl_CreateObjCommand2(interp, Tcl_DStringValue(&cmdname),
-		ZlibStreamImplCmd, zshPtr, ZlibStreamCmdDelete);
-	Tcl_DStringFree(&cmdname);
+	Tcl_DStringInit(&cmdName);
+	TclDStringAppendLiteral(&cmdName, "::tcl::zlib::streamcmd_");
+	const Tcl_Size len = Tcl_DStringLength(&cmdName);
+	TclNewLiteralStringObj(cmdCounter, "::tcl::zlib::cmdcounter");
+	TclNewIntObj(one, 1);
+	Tcl_IncrRefCount(cmdCounter);
+	Tcl_IncrRefCount(one);
+	while (1) {
+	    Tcl_Obj *newVal = TclIncrObjVar2(interp, cmdCounter, NULL, one,
+		    TCL_GLOBAL_ONLY | TCL_LEAVE_ERR_MSG);
+	    if (!newVal) {
+		// Couldn't incr; time to error out...
+		break;
+	    }
+	    Tcl_DStringSetLength(&cmdName, len);
+	    name = TclDStringAppendObj(&cmdName, newVal);
+	    if (Tcl_FindCommand(interp, name, NULL, 0) == NULL) {
+		// Found a free command slot; stop the search.
+		break;
+	    }
+	    name = NULL;
+	}
+	Tcl_DecrRefCount(cmdCounter);
+	Tcl_DecrRefCount(one);
+
+	/*
+	 * Create the command if we have a name. (If not, we'll take the
+	 * error path below.)
+	 */
+
+	if (name) {
+	    zshPtr->cmd = Tcl_CreateObjCommand2(interp, name,
+		    ZlibStreamImplCmd, zshPtr, ZlibStreamCmdDelete);
+	}
+	Tcl_DStringFree(&cmdName);
 	if (zshPtr->cmd == NULL) {
 	    goto error;
 	}
-    } else {
-	zshPtr->cmd = NULL;
     }
 
     /*
@@ -2067,7 +2086,7 @@ ZlibAdler32Cmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Size dlen = 0;
     const unsigned char *data;
@@ -2105,7 +2124,7 @@ ZlibCRC32Cmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Size dlen = 0;
     const unsigned char *data;
@@ -2143,7 +2162,7 @@ ZlibDeflateCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     int level;
 
@@ -2171,7 +2190,7 @@ ZlibCompressCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     int level;
 
@@ -2199,7 +2218,7 @@ ZlibGzipCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     static const char *const gzipopts[] = {
 	"-header", "-level", NULL
@@ -2262,7 +2281,7 @@ ZlibInflateCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     size_t buffersize = 0;
     if (objc < 2 || objc > 3) {
@@ -2289,7 +2308,7 @@ ZlibDecompressCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     size_t buffersize = 0;
     if (objc < 2 || objc > 3) {
@@ -2316,7 +2335,7 @@ ZlibGunzipCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     static const char *const gunzipopts[] = {
 	"-buffersize", "-headerVar", NULL
@@ -2379,7 +2398,7 @@ ZlibStreamCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     static const char *const stream_formats[] = {
 	"compress", "decompress", "deflate", "gunzip", "gzip", "inflate",
@@ -2533,7 +2552,7 @@ ZlibPushCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     static const char *const stream_formats[] = {
 	"compress", "decompress", "deflate", "gunzip", "gzip", "inflate",
@@ -2709,7 +2728,7 @@ ZlibStreamImplCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_ZlibStream zstream = (Tcl_ZlibStream) clientData;
     int count, code;
@@ -2835,7 +2854,7 @@ ZlibStreamAddCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_ZlibStream zstream = (Tcl_ZlibStream) clientData;
     int code, buffersize = -1, flush = -1, i;
@@ -2964,7 +2983,7 @@ ZlibStreamPutCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_ZlibStream zstream = (Tcl_ZlibStream) clientData;
     int flush = -1, i;
@@ -3057,7 +3076,7 @@ ZlibStreamHeaderCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     ZlibStreamHandle *zshPtr = (ZlibStreamHandle *) clientData;
     Tcl_Obj *resultObj;
@@ -3103,7 +3122,6 @@ HaveFlag(
  *
  *----------------------------------------------------------------------
  */
-
 static int
 ZlibTransformClose(
     void *instanceData,
@@ -3211,7 +3229,6 @@ ZlibTransformClose(
  *
  *----------------------------------------------------------------------
  */
-
 static int
 ZlibTransformInput(
     void *instanceData,
@@ -3293,7 +3310,7 @@ ZlibTransformInput(
 	/* more bytes (or Eof if readBytes == 0) */
 	chanDataPtr->inStream.avail_in += readBytes;
 
-copyDecompressed:
+    copyDecompressed:
 
 	/*
 	 * Transform the read chunk, if not empty. Anything we get
@@ -3347,7 +3364,6 @@ copyDecompressed:
  *
  *----------------------------------------------------------------------
  */
-
 static int
 ZlibTransformOutput(
     void *instanceData,
@@ -3416,7 +3432,6 @@ ZlibTransformOutput(
  *
  *----------------------------------------------------------------------
  */
-
 static int
 ZlibTransformFlush(
     Tcl_Interp *interp,
@@ -3473,7 +3488,6 @@ ZlibTransformFlush(
  *
  *----------------------------------------------------------------------
  */
-
 static int
 ZlibTransformSetOption(			/* not used */
     void *instanceData,
@@ -3590,7 +3604,6 @@ ZlibTransformSetOption(			/* not used */
  *
  *----------------------------------------------------------------------
  */
-
 static int
 ZlibTransformGetOption(
     void *instanceData,
@@ -3777,7 +3790,6 @@ ZlibTransformTimerRun(
  *
  *----------------------------------------------------------------------
  */
-
 static int
 ZlibTransformGetHandle(
     void *instanceData,
@@ -3798,7 +3810,6 @@ ZlibTransformGetHandle(
  *
  *----------------------------------------------------------------------
  */
-
 static int
 ZlibTransformBlockMode(
     void *instanceData,
@@ -3826,7 +3837,6 @@ ZlibTransformBlockMode(
  *
  *----------------------------------------------------------------------
  */
-
 static Tcl_Channel
 ZlibStackChannelTransform(
     Tcl_Interp *interp,		/* Where to write error messages. */
@@ -4003,7 +4013,6 @@ ZlibStackChannelTransform(
  *
  *----------------------------------------------------------------------
  */
-
 static int
 ResultDecompress(
     ZlibChannelData *chanDataPtr,

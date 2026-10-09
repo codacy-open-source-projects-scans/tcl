@@ -553,7 +553,7 @@ Tcl_GetUniChar(
 	Tcl_Size length = 0;
 	unsigned char *bytes = Tcl_GetBytesFromObj(NULL, objPtr, &length);
 	if (index >= length) {
-		return -1;
+	    return -1;
 	}
 
 	return bytes[index];
@@ -1857,7 +1857,7 @@ Tcl_AppendFormatToObj(
     Tcl_Obj *appendObj,
     const char *format,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     const char *span = format, *msg, *errCode;
     int gotXpg = 0, gotSequential = 0;
@@ -2549,7 +2549,7 @@ Tcl_AppendFormatToObj(
 		goto errorMsg;
 	    }
 	    bytes = TclGetString(segment);
-	    if (!Tcl_AttemptSetObjLength(segment, snprintf(bytes, segment->length, spec, d))) {
+	    if (!Tcl_AttemptSetObjLength(segment, TclFormatDouble(bytes, segment->length, spec, d))) {
 		if (allocSegment) {
 		    Tcl_DecrRefCount(segment);
 		}
@@ -2657,7 +2657,7 @@ Tcl_Format(
     Tcl_Interp *interp,
     const char *format,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     int result;
     Tcl_Obj *objPtr;
@@ -2817,11 +2817,11 @@ AppendPrintfToObjVA(
 	    case 'g':
 	    case 'G':
 		if (size > 0) {
-		Tcl_ListObjAppendElement(NULL, list, Tcl_NewDoubleObj(
-			(double)va_arg(argList, long double)));
+		    Tcl_ListObjAppendElement(NULL, list, Tcl_NewDoubleObj(
+			    (double)va_arg(argList, long double)));
 		} else {
-			Tcl_ListObjAppendElement(NULL, list, Tcl_NewDoubleObj(
-				va_arg(argList, double)));
+		    Tcl_ListObjAppendElement(NULL, list, Tcl_NewDoubleObj(
+			    va_arg(argList, double)));
 		}
 		seekingConversion = 0;
 		break;
@@ -3156,7 +3156,7 @@ Tcl_Obj *
 TclStringCat(
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[],
+    Tcl_Obj *const *objv,
     int flags)
 {
     Tcl_Obj *objResultPtr, *const *ov;
@@ -3420,9 +3420,9 @@ TclStringCat(
 	    if (0 == Tcl_AttemptSetObjLength(objResultPtr, length)) {
 		if (interp) {
 		    Tcl_SetObjResult(interp, Tcl_ObjPrintf(
-			"concatenation failed: unable to alloc %"
-			TCL_Z_MODIFIER "u bytes",
-			STRING_SIZE(length)));
+			    "concatenation failed: unable to alloc %"
+			    TCL_Z_MODIFIER "u bytes",
+			    STRING_SIZE(length)));
 		    Tcl_SetErrorCode(interp, "TCL", "MEMORY", (char *)NULL);
 		}
 		return NULL;
@@ -3437,9 +3437,9 @@ TclStringCat(
 		Tcl_DecrRefCount(objResultPtr);
 		if (interp) {
 		    Tcl_SetObjResult(interp, Tcl_ObjPrintf(
-			"concatenation failed: unable to alloc %"
-			TCL_Z_MODIFIER "u bytes",
-			STRING_SIZE(length)));
+			    "concatenation failed: unable to alloc %"
+			    TCL_Z_MODIFIER "u bytes",
+			    STRING_SIZE(length)));
 		    Tcl_SetErrorCode(interp, "TCL", "MEMORY", (char *)NULL);
 		}
 		return NULL;
@@ -3470,8 +3470,9 @@ TclStringCat(
 	    if (0 == Tcl_AttemptSetObjLength(objResultPtr, length)) {
 		if (interp) {
 		    Tcl_SetObjResult(interp, Tcl_ObjPrintf(
-			"concatenation failed: unable to alloc %" TCL_SIZE_MODIFIER "d bytes",
-			length));
+			    "concatenation failed: unable to alloc %"
+			    TCL_SIZE_MODIFIER "d bytes",
+			    length));
 		    Tcl_SetErrorCode(interp, "TCL", "MEMORY", (char *)NULL);
 		}
 		return NULL;
@@ -3485,8 +3486,9 @@ TclStringCat(
 		Tcl_DecrRefCount(objResultPtr);
 		if (interp) {
 		    Tcl_SetObjResult(interp, Tcl_ObjPrintf(
-			"concatenation failed: unable to alloc %" TCL_SIZE_MODIFIER "d bytes",
-			length));
+			    "concatenation failed: unable to alloc %"
+			    TCL_SIZE_MODIFIER "d bytes",
+			    length));
 		    Tcl_SetErrorCode(interp, "TCL", "MEMORY", (char *)NULL);
 		}
 		return NULL;
@@ -3523,6 +3525,7 @@ TclStringCat(
  *---------------------------------------------------------------------------
  *
  * TclStringCmp --
+ *
  *	Compare two Tcl_Obj values as strings.
  *
  * Results:
@@ -4386,8 +4389,8 @@ ExtendUnicodeRepWithString(
  *	Check whether the obj is the empty string.
  *
  * Results:
- *	 1 if the obj is ""
- *   0 otherwise
+ *	1 if the obj is ""
+ *	0 otherwise
  *
  * Side effects:
  *	If there is no other way to determine whethere the string
@@ -4396,7 +4399,6 @@ ExtendUnicodeRepWithString(
  *
  *----------------------------------------------------------------------
  */
-
 int
 Tcl_IsEmpty(
     Tcl_Obj *objPtr)

@@ -175,11 +175,18 @@ static void		TclWinUpdateDriveCwd(TclWinPath *winPathPtr);
 MODULE_SCOPE void	tclWinDebugPanic(const char *format, ...);
 
 /*
- * Check if a Windows error code is one that might be returned for
- * non-existent files
+ *----------------------------------------------------------------------
+ *
+ * IsNoSuchFileError --
+ *
+ *	Check if a Windows error code is one that might be returned for
+ *	non-existent files
+ *
+ *----------------------------------------------------------------------
  */
 static inline int
-IsNoSuchFileError(DWORD winError)
+IsNoSuchFileError(
+    DWORD winError)
 {
     return (winError == ERROR_FILE_NOT_FOUND ||
 	    winError == ERROR_PATH_NOT_FOUND ||
@@ -881,7 +888,7 @@ TclpFindExecutable(
 
     wNamePtr = TclWinGetModuleFileName(NULL, &winPath);
     if (wNamePtr == NULL ||
-	(utf8Ptr = TclWinWCharToUtfDString(wNamePtr, -1, &ds)) == NULL) {
+	    (utf8Ptr = TclWinWCharToUtfDString(wNamePtr, -1, &ds)) == NULL) {
 	Tcl_Panic("Could not retrieve executable module name.");
     }
 
@@ -895,7 +902,7 @@ TclpFindExecutable(
     if (hModule) {
 	wNamePtr = TclWinGetModuleFileName(hModule, &winPath);
 	if (wNamePtr == NULL ||
-	    (utf8Ptr = TclWinWCharToUtfDString(wNamePtr, -1, &ds)) == NULL) {
+		(utf8Ptr = TclWinWCharToUtfDString(wNamePtr, -1, &ds)) == NULL) {
 	    Tcl_Panic("Could not retrieve library module name.");
 	}
 	TclSetObjNameOfShlib(Tcl_NewStringObj(utf8Ptr, TCL_AUTO_LENGTH), NULL);
@@ -1204,11 +1211,16 @@ TclpMatchInDirectory(
 }
 
 /*
- * Does the given path represent a root volume? We need this special case
- * because for NTFS root volumes, the getFileAttributesProc returns a 'hidden'
- * attribute when it should not.
+ *----------------------------------------------------------------------
+ *
+ * WinIsDrive --
+ *
+ *	Does the given path represent a root volume? We need this special case
+ *	because for NTFS root volumes, the getFileAttributesProc returns a
+ *	'hidden' attribute when it should not.
+ *
+ *----------------------------------------------------------------------
  */
-
 static int
 WinIsDrive(
     const char *name,		/* Name (UTF-8) */
@@ -1272,11 +1284,16 @@ WinIsDrive(
 }
 
 /*
- * Does the given path represent a reserved window path name? If not return 0,
- * if true, return the number of characters of the path that we actually want
- * (not any trailing :).
+ *----------------------------------------------------------------------
+ *
+ * WinIsReserved --
+ *
+ *	Does the given path represent a reserved window path name? If not
+ *	return 0, if true, return the number of characters of the path that
+ *	we actually want (not any trailing :).
+ *
+ *----------------------------------------------------------------------
  */
-
 static size_t
 WinIsReserved(
     const char *path)		/* Path in UTF-8 */
@@ -1301,7 +1318,6 @@ WinIsReserved(
 
 	    return 3;
 	}
-
     } else if ((path[0] == 'l' || path[0] == 'L')
 	    && (path[1] == 'p' || path[1] == 'P')
 	    && (path[2] == 't' || path[2] == 'T')) {
@@ -1316,7 +1332,6 @@ WinIsReserved(
 		return 4;
 	    }
 	}
-
     } else if (!strcasecmp(path, "prn") || !strcasecmp(path, "nul")
 	    || !strcasecmp(path, "aux")) {
 	/*
@@ -1410,7 +1425,6 @@ NativeMatchType(
 	 */
 
 	return 1;
-
     } else if (types->type != 0) {
 	unsigned short st_mode;
 	int isExec = NativeIsExec(nativeName);
@@ -1515,7 +1529,7 @@ TclpGetUserHome(
 	    HANDLE hToken;
 	    hToken = GetCurrentProcessToken();
 	    if (GetUserProfileDirectoryW(hToken, winPathBuf, &winPathSize) !=
-		TRUE) {
+		    TRUE) {
 		if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
 		    winPathBuf = NULL;
 		} else {
@@ -1803,7 +1817,7 @@ NativeAccess(
 	/*
 	 * As of Samba 3.0.23 (10-Jul-2006), unmapped users and groups are
 	 * assigned to SID domains S-1-22-1 and S-1-22-2, where "22" is the
-	 * top-level authority.	 If the file owner and group is unmapped then
+	 * top-level authority.  If the file owner and group is unmapped then
 	 * the ACL access check below will only test against world access,
 	 * which is likely to be more restrictive than the actual access
 	 * restrictions.  Since the ACL tests are more likely wrong than
@@ -1896,7 +1910,6 @@ NativeAccess(
 	    Tcl_SetErrno(EACCES);
 	    return -1;
 	}
-
     }
     return 0;
 }
@@ -1907,7 +1920,8 @@ NativeAccess(
  * NativeIsExec --
  *
  *	Determines if a path is executable. On windows this is simply defined
- *	by whether the path ends in a standard executable extension.
+ *	by whether the path ends in a standard executable extension or if
+ *	it is identified by its PE header.
  *
  * Results:
  *	1 = executable, 0 = not.
@@ -1936,13 +1950,17 @@ NativeIsExec(
 	    || (_wcsicmp(path, L"bat") == 0)) {
 	return 1;
     }
-    return 0;
+
+    TclWinExecutableType appType = TclWinGetExecutableType(path);
+    return appType != APPL_NONE && appType != APPL_DLL;
 }
 
 /*
+ *----------------------------------------------------------------------
+ *
  * TclWinUpdateDriveCwd --
  *
- *      This function emulates CMD shell behavior of tracking the current
+ *	This function emulates CMD shell behavior of tracking the current
  *	directory for each drive by storing it an environment variable named
  *	"=<drive>:" (e.g., "=C:"). This allows Tcl's cd command to correctly
  *	switch back to the correct current directory using the volume-relative
@@ -1954,6 +1972,8 @@ NativeIsExec(
  *
  * Side effects:
  *	Process environment is updated.
+ *
+ *----------------------------------------------------------------------
  */
 static void
 TclWinUpdateDriveCwd(
@@ -2233,7 +2253,7 @@ NativeStat(
 	    if (lasterror != ERROR_SHARING_VIOLATION) {
 		Tcl_WinConvertError(lasterror);
 		return -1;
-		}
+	    }
 	    hFind = FindFirstFileW(nativePath, &ffd);
 	    if (hFind == INVALID_HANDLE_VALUE) {
 		Tcl_WinConvertError(GetLastError());
@@ -2624,21 +2644,6 @@ TclpFilesystemPathType(
 }
 
 /*
- * This define can be turned on to experiment with a different way of
- * normalizing paths (using a different Windows API). Unfortunately the new
- * path seems to take almost exactly the same amount of time as the old path!
- * The primary time taken by normalization is in
- * GetFileAttributesEx/FindFirstFile or GetFileAttributesEx/GetLongPathName.
- * Conversion to/from native is not a significant factor at all.
- *
- * Also, since we have to check for symbolic links (reparse points) then we
- * have to call GetFileAttributes on each path segment anyway, so there's no
- * benefit to doing anything clever there.
- */
-
-/* #define TclNORM_LONG_PATH */
-
-/*
  *---------------------------------------------------------------------------
  *
  * TclpObjNormalizePath --
@@ -2795,7 +2800,6 @@ TclpObjNormalizePath(
 		}
 	    }
 
-#ifndef TclNORM_LONG_PATH
 	    /*
 	     * Now we convert the tail of the current path to its 'long form',
 	     * and append it to 'dsNorm' which holds the current normalized
@@ -2849,11 +2853,17 @@ TclpObjNormalizePath(
 		    handle = FindFirstFileW((WCHAR *) nativePath, &fData);
 		    if (handle == INVALID_HANDLE_VALUE) {
 			/*
-			 * This is usually the '/' in 'c:/' at end of string.
+			 * The GetFileAttributesEx above already verified
+			 * existence of the file. The FindFirstFile may fail
+			 * either because it is the root directory or
+			 * because an ACL prevents us from listing directory
+			 * content (Bug d40d8db3fb). In such a case, just
+			 * copy the part. This does mean we may not get the
+			 * file name case right and not do the short name
+			 * to long name translation but that's life.
 			 */
-
-			Tcl_DStringAppend(&dsNorm, (const char *) L"/",
-				sizeof(WCHAR));
+			Tcl_UtfToWCharDString(lastValidPathEnd,
+				currentPathEndPosition - lastValidPathEnd, &dsNorm);
 		    } else {
 			WCHAR *nativeName;
 
@@ -2871,7 +2881,6 @@ TclpObjNormalizePath(
 		    }
 		}
 	    }
-#endif /* !TclNORM_LONG_PATH */
 	    Tcl_DStringFree(&ds);
 	    lastValidPathEnd = currentPathEndPosition;
 	    if (cur == 0) {
@@ -2887,31 +2896,6 @@ TclpObjNormalizePath(
 	}
 	currentPathEndPosition++;
 
-#ifdef TclNORM_LONG_PATH
-	/*
-	 * Convert the entire known path to long form.
-	 */
-
-	WCHAR wpath[MAX_PATH];
-	const WCHAR *nativePath;
-	DWORD wpathlen;
-
-	Tcl_DStringInit(&ds);
-	nativePath =
-		Tcl_UtfToWCharDString(path, lastValidPathEnd - path, &ds);
-	wpathlen = GetLongPathNameProc(nativePath,
-		(WCHAR *) wpath, MAX_PATH);
-	/*
-	 * We have to make the drive letter uppercase.
-	 */
-
-	if (wpath[0] >= 'a') {
-	    wpath[0] -= ('a' - 'A');
-	}
-	Tcl_DStringAppend(&dsNorm, (const char *) wpath,
-		wpathlen * sizeof(WCHAR));
-	Tcl_DStringFree(&ds);
-#endif /* TclNORM_LONG_PATH */
     }
 
     /*
@@ -3069,14 +3053,13 @@ TclWinVolumeRelativeNormalize(
 	     * one already, and if we are going to be adding some more
 	     * characters.
 	     */
-	    if (cwdPath[cwdLen-1] != '/' && (path[2] != '\0')) {
-
+	    if (cwdPath[cwdLen - 1] != '/' && (path[2] != '\0')) {
 		Tcl_AppendToObj(absolutePath, "/", 1);
 	    }
 	} else {
-		/* Non-existent drive? Assume root */
-		absolutePath = Tcl_NewStringObj(path, 2);
-		Tcl_AppendToObj(absolutePath, "/", 1);
+	    /* Non-existent drive? Assume root */
+	    absolutePath = Tcl_NewStringObj(path, 2);
+	    Tcl_AppendToObj(absolutePath, "/", 1);
 	}
 	path += 2; /* Skip X: before appending below */
     }
@@ -3475,7 +3458,7 @@ TclWinFileOwned(
 	Tcl_Free(buf);
     }
 
-    return (owned != 0);	/* Convert non-0 to 1 */
+    return owned != 0;		/* Convert non-0 to 1 */
 }
 
 /*
@@ -3502,7 +3485,8 @@ TclWinFileOwned(
 WCHAR *
 TclWinPathResize(
     TclWinPath *pathBufPtr,	/* Path buffer. Must have been initialized */
-    DWORD capacity)		/* Required capacity in WCHARS. */
+    DWORD capacity)		/* Required capacity in WCHARS, including
+				 * the nul terminator. */
 {
     assert(capacity > 0);
 
@@ -3623,6 +3607,10 @@ TclWinGetCurrentDirectory(
 				 * uninitialized or previously reset with
 				 * TclWinPathFree. */
 {
+    /*
+     * Note: Unfortunately cannot use TclWinGetPath to implement because order
+     * of parameters of wrapped function is different.
+     */
     DWORD numChars;
     DWORD capacity;
     WCHAR *fullPathPtr;

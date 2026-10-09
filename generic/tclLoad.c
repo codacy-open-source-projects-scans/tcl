@@ -131,7 +131,7 @@ Tcl_LoadObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Interp *target;
     LoadedLibrary *libraryPtr, *defaultPtr;
@@ -560,7 +560,7 @@ Tcl_UnloadObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Interp *target;		/* Which interpreter to unload from. */
     LoadedLibrary *libraryPtr;
@@ -792,7 +792,6 @@ UnloadLibrary(
 {
     int code;
     InterpLibrary *ipFirstPtr, *ipPtr;
-    LoadedLibrary *iterLibraryPtr;
     int trustedRefCount = -1, safeRefCount = -1;
     Tcl_LibraryUnloadProc *unloadProc = NULL;
 
@@ -950,7 +949,7 @@ UnloadLibrary(
 		 * Remove this library from the loaded library cache.
 		 */
 
-		iterLibraryPtr = libraryPtr;
+		LoadedLibrary *iterLibraryPtr = libraryPtr;
 		if (iterLibraryPtr == firstLibraryPtr) {
 		    firstLibraryPtr = libraryPtr->nextPtr;
 		} else {
@@ -1051,11 +1050,11 @@ Tcl_StaticLibrary(
 	strcpy(libraryPtr->prefix, prefix);
 	libraryPtr->loadHandle	= NULL;
 	libraryPtr->initProc	= initProc;
-	libraryPtr->safeInitProc	= safeInitProc;
+	libraryPtr->safeInitProc= safeInitProc;
 	libraryPtr->unloadProc = NULL;
 	libraryPtr->safeUnloadProc = NULL;
 	Tcl_MutexLock(&libraryMutex);
-	libraryPtr->nextPtr		= firstLibraryPtr;
+	libraryPtr->nextPtr	= firstLibraryPtr;
 	firstLibraryPtr		= libraryPtr;
 	Tcl_MutexUnlock(&libraryMutex);
     }

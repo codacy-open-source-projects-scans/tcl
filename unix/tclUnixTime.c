@@ -41,7 +41,7 @@ TclpGetSeconds(void)
 /*
  *----------------------------------------------------------------------
  *
- * TclpGetMicroseconds --
+ * Tcl_GetDayTime --
  *
  *	This procedure returns the number of microseconds from the epoch.
  *	On most Unix systems the epoch is Midnight Jan 1, 1970 GMT.
@@ -56,12 +56,12 @@ TclpGetSeconds(void)
  */
 
 long long
-TclpGetMicroseconds(void)
+Tcl_GetDayTime(void)
 {
     struct timeval tv;
 
     (void) gettimeofday(&tv, NULL);
-    return tv.tv_sec * 1000000 + tv.tv_usec;
+    return (long long)tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
 /*

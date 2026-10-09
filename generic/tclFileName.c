@@ -716,6 +716,7 @@ SplitWinPath(
 	length = p - elementStart;
 	if (length > 0) {
 	    Tcl_Obj *nextElt;
+	    /* Bug https://core.tcl-lang.org/tcl/tktview/1194458 */
 	    if ((elementStart != path) &&
 		    isalpha(UCHAR(elementStart[0])) &&
 		    (elementStart[1] == ':')) {
@@ -758,7 +759,7 @@ Tcl_Obj *
 TclFSJoinPathHelper(
     Tcl_Obj *pathPtr,		/* Valid path or NULL. */
     Tcl_Size objc,		/* Number of array elements to join */
-    Tcl_Obj *const objv[],	/* Path elements to join. */
+    Tcl_Obj *const *objv,	/* Path elements to join. */
     bool forceRelative)		/* If true, assume all paths except first are
 				 * relative. If false, discards paths before
 				 * any absolute/volume-relative paths */
@@ -777,7 +778,7 @@ TclFSJoinPathHelper(
 	return TclJoinPath(2, pair, forceRelative);
     } else {
 	Tcl_Size elemc = objc + 1;
-	Tcl_Obj *ret, **elemv = (Tcl_Obj**)Tcl_Alloc(elemc*sizeof(Tcl_Obj *));
+	Tcl_Obj *ret, **elemv = (Tcl_Obj **)Tcl_Alloc(elemc*sizeof(Tcl_Obj *));
 
 	elemv[0] = pathPtr;
 	memcpy(elemv+1, objv, objc*sizeof(Tcl_Obj *));
@@ -816,7 +817,7 @@ Tcl_Obj *
 Tcl_FSJoinToPath(
     Tcl_Obj *pathPtr,		/* Valid path or NULL. */
     Tcl_Size objc,		/* Number of array elements to join */
-    Tcl_Obj *const objv[])	/* Path elements to join. */
+    Tcl_Obj *const *objv)	/* Path elements to join. */
 {
     return TclFSJoinPathHelper(pathPtr, objc, objv, false);
 }
@@ -857,6 +858,7 @@ TclpNativeJoinPath(
 
     p = joining;
 
+    /* Bug https://core.tcl-lang.org/tcl/tktview/1194458 */
     if (length != 0) {
 	if ((p[0] == '.') && (p[1] == '/') &&
 		(tclPlatform==TCL_PLATFORM_WINDOWS) && isalpha(UCHAR(p[2]))
@@ -909,8 +911,8 @@ TclpNativeJoinPath(
 	 * Check to see if we need to append a separator.
 	 */
 
-	if ((length > 0) &&
-		(start[length-1] != '/') && (start[length-1] != ':')) {
+	if ((length > 0) && (start[length-1] != '/') &&
+		(start[length-1] != '\\') && (start[length-1] != ':')) {
 	    Tcl_AppendToObj(prefix, "/", 1);
 	    (void)TclGetStringFromObj(prefix, &length);
 	}
@@ -1016,8 +1018,8 @@ Tcl_JoinPath(
  *
  * Results:
  *	The return value is a pointer to a string containing the name.
- *      This may either be the name pointer passed in or space allocated in
- *      bufferPtr. In all cases, if the return value is not NULL, the caller
+ *	This may either be the name pointer passed in or space allocated in
+ *	bufferPtr. In all cases, if the return value is not NULL, the caller
  *	must call Tcl_DStringFree() to free the space. If there was an
  *	error in processing the name, then an error message is left in the
  *	interp's result (if interp was not NULL) and the return value is NULL.
@@ -1151,7 +1153,7 @@ Tcl_GlobObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     int globFlags, join, dir, result;
     Tcl_Size i, length;
@@ -1590,7 +1592,7 @@ Tcl_GlobObjCmd(
  *
  * TclGlob --
  *
- *	Sets the separator string based on the platform	and calls DoGlob.
+ *	Sets the separator string based on the platform and calls DoGlob.
  *
  *	The interpreter's result, on entry to this function, must be a valid
  *	Tcl list (e.g. it could be empty), since we will lappend any new

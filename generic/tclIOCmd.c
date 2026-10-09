@@ -139,7 +139,7 @@ Tcl_PutsObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;		/* The channel to puts on. */
     Tcl_Obj *string;		/* String to write. */
@@ -252,7 +252,7 @@ Tcl_FlushObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Obj *chanObjPtr;
     Tcl_Channel chan;		/* The channel to flush on. */
@@ -316,7 +316,7 @@ Tcl_GetsObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;		/* The channel to read from. */
     Tcl_Size lineLen;		/* Length of line just read. */
@@ -402,7 +402,7 @@ Tcl_ReadObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;		/* The channel to read from. */
     int newline;		/* Discard newline at end? */
@@ -465,6 +465,10 @@ Tcl_ReadObjCmd(
 		    TclGetString(objv[i])));
 	    Tcl_SetErrorCode(interp, "TCL", "VALUE", "NUMBER", (char *)NULL);
 	    return TCL_ERROR;
+	}
+	if (toRead > TCL_SIZE_MAX) {
+	    /* Bug 6e82720e14 */
+	    toRead = TCL_SIZE_MAX;
 	}
     }
 
@@ -540,7 +544,7 @@ Tcl_SeekObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;		/* The channel to tell on. */
     Tcl_WideInt offset;		/* Where to seek? */
@@ -615,7 +619,7 @@ Tcl_TellObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;		/* The channel to tell on. */
     Tcl_WideInt newLoc;
@@ -676,7 +680,7 @@ Tcl_CloseObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;		/* The channel to close. */
     static const char *const dirOptions[] = {
@@ -784,7 +788,7 @@ Tcl_FconfigureObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     const char *optionName, *valueName;
     Tcl_Channel chan;		/* The channel to set a mode on. */
@@ -859,7 +863,7 @@ Tcl_EofObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;
 
@@ -899,7 +903,7 @@ ChanIsBinaryCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;
 
@@ -938,7 +942,7 @@ Tcl_ExecObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Obj *resultPtr;
     const char **argv;		/* An array for the string arguments. Stored
@@ -1142,7 +1146,7 @@ Tcl_FblockedObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;
     int mode;
@@ -1188,7 +1192,7 @@ Tcl_OpenObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     int pipeline, prot;
     const char *modeString, *what;
@@ -1564,7 +1568,7 @@ Tcl_SocketObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     static const char *const socketOptions[] = {
 	"-async", "-backlog", "-myaddr", "-myport", "-reuseaddr",
@@ -1815,7 +1819,7 @@ Tcl_FcopyObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel inChan, outChan;
     int mode, index;
@@ -1913,7 +1917,7 @@ ChanPendingObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;
     static const char *const options[] = {"input", "output", NULL};
@@ -1977,7 +1981,7 @@ ChanTruncateObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel chan;
     Tcl_WideInt length;
@@ -2050,7 +2054,7 @@ ChanPipeObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Channel rchan, wchan;
     const char *channelNames[2];
@@ -2101,7 +2105,7 @@ TclChannelNamesCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     if (objc < 1 || objc > 2) {
 	Tcl_WrongNumArgs(interp, 1, objv, "?pattern?");

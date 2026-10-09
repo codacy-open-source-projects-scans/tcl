@@ -4,7 +4,7 @@
  *	Contains the date format (and scan) routines. This code is back-ported
  *	from the time and date facilities of tclSE engine, by Serg G. Brester.
  *
- * Copyright (c) 2015 by Sergey G. Brester aka sebres. All rights reserved.
+ * Copyright © 2015 by Sergey G. Brester aka sebres. All rights reserved.
  *
  * See the file "license.terms" for information on usage and redistribution of
  * this file, and for a DISCLAIMER OF ALL WARRANTIES.
@@ -92,7 +92,7 @@ Clock_str2int(
      * Overflow impossible for max 9 digits ("9..9"),
      * or for 10 digits if it starts with 1 ("19..9").
      */
-    if (e - p <= 9 || *p <= '1' ) {
+    if (e - p <= 9 || *p <= '1') {
 	while (p < e) {
 	    val = val * 10 + (*p++ - '0');
 	}
@@ -109,7 +109,7 @@ Clock_str2int(
     if (sign >= 0) {
 	if ((val > INT_MAX / 10) ||
 		((val == INT_MAX / 10) && (last > INT_MAX % 10))) {
-	    return TCL_ERROR;	/* overflow*/
+	    return TCL_ERROR;	/* overflow */
 	}
 	val = val * 10 + last;
     } else {
@@ -118,7 +118,7 @@ Clock_str2int(
 		((val == INT_MIN / 10) && ((INT_MIN % 10 < 0)
 			? (last > -(INT_MIN % 10))
 			: (last > 10-(INT_MIN % 10))))) {
-	    return TCL_ERROR;	/* overflow*/
+	    return TCL_ERROR;	/* overflow */
 	}
 	val = val * 10 - last;
     }
@@ -145,7 +145,7 @@ Clock_str2wideInt(
      * Overflow impossible for max 18 digits ("9..9"),
      * or for 19 digits if it starts with 8 ("89..9").
      */
-    if (e - p <= 18 || *p <= '8' ) {
+    if (e - p <= 18 || *p <= '8') {
 	while (p < e) {
 	    val = val * 10 + (*p++ - '0');
 	}
@@ -162,7 +162,7 @@ Clock_str2wideInt(
     if (sign >= 0) {
 	if ((val > WIDE_MAX / 10) ||
 		((val == WIDE_MAX / 10) && (last > WIDE_MAX % 10))) {
-	    return TCL_ERROR;	/* overflow*/
+	    return TCL_ERROR;	/* overflow */
 	}
 	val = val * 10 + last;
     } else {
@@ -171,7 +171,7 @@ Clock_str2wideInt(
 		((val == WIDE_MIN / 10) && ((WIDE_MIN % 10 < 0)
 			? (last > -(WIDE_MIN % 10))
 			: (last > 10-(WIDE_MIN % 10))))) {
-	    return TCL_ERROR;	/* overflow*/
+	    return TCL_ERROR;	/* overflow */
 	}
 	val = val * 10 - last;
     }
@@ -286,6 +286,7 @@ Clock_itoaw(
 
     return buf + width;
 }
+
 char *
 TclItoAw(
     char *buf,
@@ -496,20 +497,14 @@ static Tcl_HashTable FmtScnHashTable;
 static int initialized = 0;
 
 /*
- * Wrappers between pointers to hash entry and format storage object
+ * Wrapper between pointers to hash entry and containing format storage object.
  */
-static inline Tcl_HashEntry *
-HashEntry4FmtScn(
-    ClockFmtScnStorage *fss)
-{
-    return (Tcl_HashEntry*)(fss + 1);
-}
-
 static inline ClockFmtScnStorage *
 FmtScn4HashEntry(
     Tcl_HashEntry *hKeyPtr)
 {
-    return (ClockFmtScnStorage*)(((char*)hKeyPtr) - sizeof(ClockFmtScnStorage));
+    return (ClockFmtScnStorage *)
+	    (((char *)hKeyPtr) - offsetof(ClockFmtScnStorage, hashEntry));
 }
 
 /*
@@ -535,14 +530,13 @@ ClockFmtScnStorageAllocProc(
     const char *string = (const char *) keyPtr;
     Tcl_HashEntry *hPtr;
     size_t size = strlen(string) + 1;
-    size_t allocsize = sizeof(ClockFmtScnStorage) + sizeof(Tcl_HashEntry);
+    size_t allocsize = sizeof(ClockFmtScnStorage) + size;
 
-    allocsize += size;
     if (size > sizeof(hPtr->key)) {
 	allocsize -= sizeof(hPtr->key);
     }
 
-    fss = (ClockFmtScnStorage *)Tcl_AttemptAlloc(allocsize);
+    fss = (ClockFmtScnStorage *) Tcl_AttemptAlloc(allocsize);
     if (!fss) {
 	return NULL;
     }
@@ -550,7 +544,7 @@ ClockFmtScnStorageAllocProc(
     /* initialize */
     memset(fss, 0, sizeof(*fss));
 
-    hPtr = HashEntry4FmtScn(fss);
+    hPtr = &fss->hashEntry;
     memcpy(&hPtr->key.string, string, size);
     hPtr->clientData = 0;	/* currently unused */
 
@@ -607,12 +601,11 @@ static void
 ClockFmtScnStorageDelete(
     ClockFmtScnStorage *fss)
 {
-    Tcl_HashEntry *hPtr = HashEntry4FmtScn(fss);
     /*
      * This will delete a hash entry and call "Tcl_Free" for storage self, if
      * some additionally handling required, freeEntryProc can be used instead
      */
-    Tcl_DeleteHashEntry(hPtr);
+    Tcl_DeleteHashEntry(&fss->hashEntry);
 }
 
 /*
@@ -720,8 +713,7 @@ ClockFmtObj_UpdateString(
     ClockFmtScnStorage *fss = ObjClockFmtScn(objPtr);
 
     if (fss != NULL) {
-	Tcl_HashEntry *hPtr = HashEntry4FmtScn(fss);
-	name = hPtr->key.string;
+	name = fss->hashEntry.key.string;
     }
     len = strlen(name);
     objPtr->length = len++,
@@ -752,7 +744,7 @@ ClockFmtObj_UpdateString(
  *----------------------------------------------------------------------
  */
 
-Tcl_Obj*
+Tcl_Obj *
 ClockFrmObjGetLocFmtKey(
     Tcl_Interp *interp,
     Tcl_Obj *objPtr)
@@ -770,7 +762,11 @@ ClockFrmObjGetLocFmtKey(
 	return keyObj;
     }
 
-    keyObj = Tcl_ObjPrintf("FMT_%s", TclGetString(objPtr));
+    Tcl_DString ds;
+    Tcl_DStringInit(&ds);
+    TclDStringAppendLiteral(&ds, "FMT_");
+    TclDStringAppendObj(&ds, objPtr);
+    keyObj = Tcl_DStringToObj(&ds);
     TclInitObjRef(ObjLocFmtKey(objPtr), keyObj);
 
     return keyObj;
@@ -1140,7 +1136,6 @@ DetermineGreedySearchLen(
 	}
 	p += tok->lookAhMin;
 	if (laTok->map && p < end) {
-
 	    /* try to find laTok between [lookAhMin, lookAhMax] */
 	    while (minLen < maxLen) {
 		const char *f = FindTokenBegin(p, end, laTok,
@@ -1257,8 +1252,7 @@ LocaleListSearch(
     }
 
     /* search in list */
-    return ObjListSearch(info, val, lstv, lstc,
-	    minLen, maxLen);
+    return ObjListSearch(info, val, lstv, lstc, minLen, maxLen);
 }
 #endif
 
@@ -1353,7 +1347,7 @@ ClockMCGetListIdxTree(
 static TclStrIdxTree *
 ClockMCGetMultiListIdxTree(
     ClockFmtScnCmdArgs *opts,
-    int	mcKey,
+    int mcKey,
     const int *mcKeys)
 {
     TclStrIdxTree * idxTree;
@@ -2146,6 +2140,13 @@ EstimateTokenCount(
 
 /*
  *----------------------------------------------------------------------
+ *
+ * ClockGetOrParseScanFormat --
+ *
+ *	Parse a [clock scan] format, or look up the cache version of a
+ *	previously processed format.
+ *
+ *----------------------------------------------------------------------
  */
 static ClockFmtScnStorage *
 ClockGetOrParseScanFormat(
@@ -2172,7 +2173,7 @@ ClockGetOrParseScanFormat(
 	unsigned tokCnt;
 	const char *p, *e, *cp;
 
-	e = p = HashEntry4FmtScn(fss)->key.string;
+	e = p = fss->hashEntry.key.string;
 	e += strlen(p);
 
 	/* estimate token count by % char and format length */
@@ -2208,7 +2209,7 @@ ClockGetOrParseScanFormat(
 		    continue;
 		case 'E':
 		    scnMap = ScnETokenMap,
-		    mapIndex =	ScnETokenMapIndex,
+		    mapIndex = ScnETokenMapIndex,
 		    aliasIndex = ScnETokenMapAliasIndex;
 		    p++;
 		    break;
@@ -2453,7 +2454,7 @@ TclClockScan(
 
 	    if (size < map->minSize) {
 		/* missing input -> error */
-		if ((map->flags & CLF_OPTIONAL)) {
+		if (map->flags & CLF_OPTIONAL) {
 		    continue;
 		}
 		goto not_match;
@@ -2484,7 +2485,7 @@ TclClockScan(
 	    case TCL_OK:
 		break;
 	    case TCL_RETURN:
-		if ((map->flags & CLF_OPTIONAL)) {
+		if (map->flags & CLF_OPTIONAL) {
 		    yyInput = p;
 		    continue;
 		}
@@ -2576,7 +2577,6 @@ TclClockScan(
     /* seconds token (%s) take precedence over all other tokens */
     if ((opts->flags & CLF_EXTENDED) || !(flags & CLF_POSIXSEC)) {
 	if (flags & CLF_DATE) {
-
 	    if (!(flags & CLF_JULIANDAY)) {
 		info->flags |= CLF_ASSEMBLE_SECONDS|CLF_ASSEMBLE_JULIANDAY;
 
@@ -2699,7 +2699,7 @@ TclClockScan(
     Tcl_SetObjResult(opts->interp, Tcl_ObjPrintf(
 	    "input string \"%s\" does not match supplied format \"%s\","
 	    " locale \"%s\" - token \"%s\"",
-	    info->dateStart, HashEntry4FmtScn(fss)->key.string,
+	    info->dateStart, fss->hashEntry.key.string,
 	    TclGetString(opts->localeObj),
 	    tok && tok->tokWord.start ? tok->tokWord.start : "NULL"));
 #endif
@@ -2820,6 +2820,7 @@ ClockFmtToken_StarDate_Proc(
     dateFmt->output = Clock_itoaw(dateFmt->output, v, '0', 1);
     return TCL_OK;
 }
+
 static int
 ClockFmtToken_WeekOfYear_Proc(
     TCL_UNUSED(ClockFmtScnCmdArgs *),
@@ -2838,6 +2839,7 @@ ClockFmtToken_WeekOfYear_Proc(
     *val = (dateFmt->date.dayOfYear - dow + 7) / 7;
     return TCL_OK;
 }
+
 static int
 ClockFmtToken_JDN_Proc(
     TCL_UNUSED(ClockFmtScnCmdArgs *),
@@ -2910,6 +2912,7 @@ ClockFmtToken_JDN_Proc(
     }
     return TCL_OK;
 }
+
 static int
 ClockFmtToken_TimeZone_Proc(
     ClockFmtScnCmdArgs *opts,
@@ -3010,12 +3013,12 @@ ClockFmtToken_LocaleERAYear_Proc(
 		    dateFmt->date.localSeconds, rowc, rowv, NULL);
 	}
 	if (dateFmt->localeEra == NULL) {
-	    dateFmt->localeEra = (Tcl_Obj*)1;
+	    dateFmt->localeEra = (Tcl_Obj *) 1;
 	}
     }
 
     /* if no LOCALE_ERAS in catalog or era not found */
-    if (dateFmt->localeEra == (Tcl_Obj*)1) {
+    if (dateFmt->localeEra == (Tcl_Obj *) 1) {
 	if (FrmResultAllocate(dateFmt, 11) != TCL_OK) {
 	    return TCL_ERROR;
 	}
@@ -3222,6 +3225,13 @@ static const ClockFormatTokenMap FmtWordTokenMap = {
 
 /*
  *----------------------------------------------------------------------
+ *
+ * ClockGetOrParseFmtFormat --
+ *
+ *	Parse a [clock format] format, or look up the cache version of a
+ *	previously processed format.
+ *
+ *----------------------------------------------------------------------
  */
 static ClockFmtScnStorage *
 ClockGetOrParseFmtFormat(
@@ -3248,7 +3258,7 @@ ClockGetOrParseFmtFormat(
 	unsigned tokCnt;
 	const char *p, *e, *cp;
 
-	e = p = HashEntry4FmtScn(fss)->key.string;
+	e = p = fss->hashEntry.key.string;
 	e += strlen(p);
 
 	/* estimate token count by % char and format length */
@@ -3261,7 +3271,7 @@ ClockGetOrParseFmtFormat(
 	    switch (*p) {
 	    case '%': {
 		const ClockFormatTokenMap *fmtMap = FmtSTokenMap;
-		const char *mapIndex =	FmtSTokenMapIndex;
+		const char *mapIndex = FmtSTokenMapIndex;
 		const char **aliasIndex = FmtSTokenMapAliasIndex;
 
 		if (p + 1 >= e) {
@@ -3282,7 +3292,7 @@ ClockGetOrParseFmtFormat(
 		    continue;
 		case 'E':
 		    fmtMap = FmtETokenMap,
-		    mapIndex =	FmtETokenMapIndex,
+		    mapIndex = FmtETokenMapIndex,
 		    aliasIndex = FmtETokenMapAliasIndex;
 		    p++;
 		    break;
@@ -3370,6 +3380,13 @@ ClockGetOrParseFmtFormat(
 
 /*
  *----------------------------------------------------------------------
+ *
+ * TclClockFormat --
+ *
+ *	Core of implementation of [clock format]. Arguments are parsed, but
+ *	the actual format may need parsing and compilation.
+ *
+ *----------------------------------------------------------------------
  */
 int
 TclClockFormat(
@@ -3441,7 +3458,7 @@ TclClockFormat(
 		    dateFmt->output = Clock_itoaw(
 			    dateFmt->output, val, *map->tostr, map->width);
 		} else {
-		    dateFmt->output += sprintf(dateFmt->output, map->tostr, val);
+		    dateFmt->output += snprintf(dateFmt->output, dateFmt->resEnd - dateFmt->output, map->tostr, val);
 		}
 	    } else {
 		const char *s;
@@ -3470,9 +3487,10 @@ TclClockFormat(
 		goto error;
 	    }
 	    if (map->width) {
-		dateFmt->output = Clock_witoaw(dateFmt->output, val, *map->tostr, map->width);
+		dateFmt->output = Clock_witoaw(dateFmt->output, val, *map->tostr,
+			map->width);
 	    } else {
-		dateFmt->output += sprintf(dateFmt->output, map->tostr, val);
+		dateFmt->output += snprintf(dateFmt->output, dateFmt->resEnd - dateFmt->output, map->tostr, val);
 	    }
 	    break;
 	}
@@ -3546,7 +3564,16 @@ TclClockFormat(
     return TCL_ERROR;
 }
 
-
+/*
+ *----------------------------------------------------------------------
+ *
+ * TclClockFrmScnClearCaches --
+ *
+ *	Invalidate any caches held at global level for [clock].
+ *	(TODO: finish this)
+ *
+ *----------------------------------------------------------------------
+ */
 void
 TclClockFrmScnClearCaches(void)
 {
@@ -3554,7 +3581,16 @@ TclClockFrmScnClearCaches(void)
     /* clear caches ... */
     Tcl_MutexUnlock(&ClockFmtMutex);
 }
-
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * TclClockFrmScnFinalize --
+ *
+ *	Delete all global storage held by the [clock] implementation.
+ *
+ *----------------------------------------------------------------------
+ */
 void
 TclClockFrmScnFinalize(void)
 {
@@ -3575,6 +3611,7 @@ TclClockFrmScnFinalize(void)
     Tcl_MutexUnlock(&ClockFmtMutex);
     Tcl_MutexFinalize(&ClockFmtMutex);
 }
+
 /*
  * Local Variables:
  * mode: c

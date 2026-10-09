@@ -2900,6 +2900,16 @@ test binary-74.13 {binary encode uuencode} -body {
 test binary-74.14 {binary encode uuencode} -returnCodes error -body {
     binary encode uuencode -maxlen 86 abcabcabc
 } -result {line length out of range}
+test binary-74.15 {binary encode uuencode} -body {
+    binary encode uuencode -maxlen 5 -wrapchar [string repeat "\n" 10] test
+} -returnCodes error -result {invalid wrapchar; will defeat decoding}
+# following 2 tests are 32-bit only (wouldn't trigger max size exceeding error and might require excessive memory for 64-bit executable):
+test binary-74.16 {binary encode uuencode (no segfault exceeding max size for a Tcl value)} -constraints {!pointerIs64bit} -body {
+    binary encode uuencode -maxlen 5 -wrapchar [string repeat "\t" 50000] [string repeat "A" 128837]
+} -returnCodes error -match glob -result {max size for a Tcl value (* bytes) exceeded}
+test binary-74.17 {binary encode uuencode (no segfault exceeding max size for a Tcl value)} -constraints {!pointerIs64bit} -body {
+    binary encode uuencode -maxlen 5 -wrapchar [set s [string repeat "\f" 650000]] $s
+} -returnCodes error -match glob -result {max size for a Tcl value (* bytes) exceeded}
 
 test binary-75.1 {binary decode uuencode} -body {
     binary decode uuencode
@@ -3041,16 +3051,16 @@ test binary-79.6 {Tcl_SetByteArrayLength} -body {
 
 test binary-80.1 {Tcl_GetBytesFromObj} -constraints testbytestring -returnCodes 1 -body {
     testbytestring "乎"
-} -result "expected byte sequence but character 0 was '乎' (U+004E4E)"
+} -result "expected code point values below 0xff but value at byte offset 0 was 0x4e4e"
 test binary-80.2 {Tcl_GetBytesFromObj} -constraints testbytestring -returnCodes 1 -body {
     testbytestring [testbytestring "\x00\xA0\xA0\xA0\xE4\xB9\x8E"]
-} -result "expected byte sequence but character 4 was '乎' (U+004E4E)"
+} -result "expected code point values below 0xff but value at byte offset 4 was 0x4e4e"
 test binary-80.3 {Tcl_GetBytesFromObj} -constraints testbytestring -returnCodes 1 -body {
     testbytestring [testbytestring "\xC0\x80\xA0\xA0\xA0\xE4\xB9\x8E"]
-} -result "expected byte sequence but character 4 was '乎' (U+004E4E)"
+} -result "expected code point values below 0xff but value at byte offset 4 was 0x4e4e"
 test binary-80.4 {Tcl_GetBytesFromObj} -constraints testbytestring -returnCodes 1 -body {
     testbytestring [testbytestring "\xC0\x80\xA0\xA0\xA0\xF0\x9F\x98\x81"]
-} -result "expected byte sequence but character 4 was '\U01F601' (U+01F601)"
+} -result "expected code point values below 0xff but value at byte offset 4 was 0x1f601"
 test binary-80.5 {Tcl_GetBytesFromObj} -constraints {
     bigmem testbytestring pointerIs64bit deprecated
 } -body {

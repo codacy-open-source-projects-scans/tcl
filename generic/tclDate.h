@@ -4,7 +4,7 @@
  *	This header file handles common usage of clock primitives
  *	between tclDate.c (yacc), tclClock.c and tclClockFmt.c.
  *
- * Copyright (c) 2014 Serg G. Brester (aka sebres)
+ * Copyright © 2014 Serg G. Brester (aka sebres)
  *
  * See the file "license.terms" for information on usage and redistribution
  * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
@@ -296,7 +296,7 @@ typedef struct ClockLastTZOffs {
     Tcl_Obj *timezoneObj;
     int changeover;
     Tcl_WideInt localSeconds;
-    Tcl_WideInt rangesVal[2];   /* Bounds for cached time zone offset */
+    Tcl_WideInt rangesVal[2];	/* Bounds for cached time zone offset */
     /* values */
     int tzOffset;
     Tcl_Obj *tzName;		/* Name (abbreviation) of this area in TZ */
@@ -356,8 +356,8 @@ typedef struct ClockClientData {
     /* Last-period cache for fast UTC to Local and backwards conversion */
     ClockLastTZOffs lastTZOffsCache[2];
 
-    int defFlags;		    /* Default flags (from configure), ATM
-				     * only CLF_VALIDATE supported */
+    int defFlags;		/* Default flags (from configure), ATM
+				 * only CLF_VALIDATE supported */
 } ClockClientData;
 
 typedef struct ClockFmtScnCmdArgs {
@@ -465,9 +465,7 @@ struct ClockFormatToken {
     } tokWord;
 };
 
-typedef struct ClockFmtScnStorage ClockFmtScnStorage;
-
-struct ClockFmtScnStorage {
+typedef struct ClockFmtScnStorage {
     int objRefCount;		/* Reference count shared across threads */
     ClockScanToken *scnTok;
     unsigned scnTokC;
@@ -475,15 +473,13 @@ struct ClockFmtScnStorage {
     ClockFormatToken *fmtTok;
     unsigned fmtTokC;
 #if CLOCK_FMT_SCN_STORAGE_GC_SIZE > 0
-    ClockFmtScnStorage *nextPtr;
-    ClockFmtScnStorage *prevPtr;
+    struct ClockFmtScnStorage *nextPtr;
+    struct ClockFmtScnStorage *prevPtr;
 #endif
     size_t fmtMinAlloc;
-#if 0
-    Tcl_HashEntry hashEntry		/* ClockFmtScnStorage is a derivate of Tcl_HashEntry,
-					 * stored by offset +sizeof(self) */
-#endif
-};
+    Tcl_HashEntry hashEntry;	/* ClockFmtScnStorage is a derivate of Tcl_HashEntry,
+				 * stored by offset +sizeof(self) */
+} ClockFmtScnStorage;
 
 /*
  * Clock macros.

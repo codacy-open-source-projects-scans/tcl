@@ -220,7 +220,7 @@ TclClockInit(
 
     ClockClientData *data = (ClockClientData *)Tcl_Alloc(sizeof(ClockClientData));
     data->refCount = 0;
-    data->literals = (Tcl_Obj **)Tcl_Alloc(LIT__END * sizeof(Tcl_Obj*));
+    data->literals = (Tcl_Obj **)Tcl_Alloc(LIT__END * sizeof(Tcl_Obj *));
     int i;
     for (i = 0; i < LIT__END; ++i) {
 	TclInitObjRef(data->literals[i], Tcl_NewStringObj(
@@ -714,7 +714,6 @@ TclClockMCDict(
 
     /* if dict not yet retrieved */
     if (opts->mcDictObj == NULL) {
-
 	/* if locale was not yet used */
 	if (!(opts->flags & CLF_LOCALE_USED)) {
 	    opts->localeObj = NormLocaleObj(dataPtr, opts->interp,
@@ -734,7 +733,7 @@ TclClockMCDict(
 		int i;
 
 		dataPtr->mcLiterals = (Tcl_Obj **)
-			Tcl_Alloc(MCLIT__END * sizeof(Tcl_Obj*));
+			Tcl_Alloc(MCLIT__END * sizeof(Tcl_Obj *));
 		for (i = 0; i < MCLIT__END; ++i) {
 		    TclInitObjRef(dataPtr->mcLiterals[i], Tcl_NewStringObj(
 			    MsgCtLiterals[i], TCL_AUTO_LENGTH));
@@ -907,7 +906,7 @@ TclClockMCSetIdx(
     if (dataPtr->mcLitIdxs == NULL) {
 	int i;
 
-	dataPtr->mcLitIdxs = (Tcl_Obj **)Tcl_Alloc(MCLIT__END * sizeof(Tcl_Obj*));
+	dataPtr->mcLitIdxs = (Tcl_Obj **)Tcl_Alloc(MCLIT__END * sizeof(Tcl_Obj *));
 	for (i = 0; i < MCLIT__END; ++i) {
 	    TclInitObjRef(dataPtr->mcLitIdxs[i],
 		    Tcl_NewStringObj(MsgCtLitIdxs[i], TCL_AUTO_LENGTH));
@@ -968,7 +967,7 @@ ClockConfigureObjCmd(
     void *clientData,		/* Client data containing literal pool */
     Tcl_Interp *interp,		/* Tcl interpreter */
     Tcl_Size objc,		/* Parameter count */
-    Tcl_Obj *const objv[])	/* Parameter vector */
+    Tcl_Obj *const *objv)	/* Parameter vector */
 {
     ClockClientData *dataPtr = (ClockClientData *)clientData;
     static const char *const options[] = {
@@ -3025,24 +3024,30 @@ ClockGetenvObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
 #ifdef _WIN32
     const WCHAR *varName;
     const WCHAR *varValue;
     Tcl_DString ds;
 #else
-    const char *varName;
     const char *varValue;
 #endif
+    const char *argv1 = TclGetString(objv[1]);
 
     if (objc != 2) {
 	Tcl_WrongNumArgs(interp, 1, objv, "name");
 	return TCL_ERROR;
     }
+    if (!strcmp(argv1, "TZ") && !strcmp(argv1, "TCL_TZ")) {
+    	Tcl_SetObjResult(interp, Tcl_NewStringObj(
+    		"the only allowed argument is either TZ or TCL_TZ", TCL_AUTO_LENGTH));
+    	Tcl_SetErrorCode(interp, "CLOCK", "invalidEnvArgument", (char *)NULL);
+	return TCL_ERROR;
+    }
 #ifdef _WIN32
     Tcl_DStringInit(&ds);
-    varName = Tcl_UtfToWCharDString(TclGetString(objv[1]), -1, &ds);
+    varName = Tcl_UtfToWCharDString(argv1, -1, &ds);
     varValue = _wgetenv(varName);
     if (varValue == NULL) {
 	Tcl_DStringFree(&ds);
@@ -3052,8 +3057,7 @@ ClockGetenvObjCmd(
 	Tcl_DStringResult(interp, &ds);
     }
 #else
-    varName = TclGetString(objv[1]);
-    varValue = getenv(varName);
+    varValue = getenv(argv1);
     if (varValue != NULL) {
 	Tcl_SetObjResult(interp, Tcl_NewStringObj(
 		varValue, TCL_AUTO_LENGTH));
@@ -3156,7 +3160,7 @@ ClockClicksObjCmd(
 
     switch (index) {
     case CLICKS_MILLIS:
-	clicks = TclpGetMicroseconds() / 1000;
+	clicks = Tcl_GetDayTime() / 1000;
 	break;
     case CLICKS_NATIVE:
 #ifdef TCL_WIDE_CLICKS
@@ -3166,7 +3170,7 @@ ClockClicksObjCmd(
 #endif
 	break;
     case CLICKS_MICROS:
-	clicks = TclpGetMicroseconds();
+	clicks = Tcl_GetDayTime();
 	break;
     default:
 	TCL_UNREACHABLE();
@@ -3207,7 +3211,7 @@ ClockMillisecondsObjCmd(
 	Tcl_WrongNumArgs(interp, 0, objv, "clock milliseconds");
 	return TCL_ERROR;
     }
-    TclNewIntObj(timeObj, TclpGetMicroseconds() / 1000);
+    TclNewIntObj(timeObj, Tcl_GetDayTime() / 1000);
     Tcl_SetObjResult(interp, timeObj);
     return TCL_OK;
 }
@@ -3241,7 +3245,7 @@ ClockMicrosecondsObjCmd(
 	Tcl_WrongNumArgs(interp, 0, objv, "clock microseconds");
 	return TCL_ERROR;
     }
-    Tcl_SetObjResult(interp, Tcl_NewWideIntObj(TclpGetMicroseconds()));
+    Tcl_SetObjResult(interp, Tcl_NewWideIntObj(Tcl_GetDayTime()));
     return TCL_OK;
 }
 
@@ -3325,7 +3329,7 @@ ClockParseFmtScnArgs(
     TclDateFields *date,	/* Extracted date-time corresponding base
 				 * (by scan or add) resp. clockval (by format) */
     Tcl_Size objc,		/* Parameter count */
-    Tcl_Obj *const objv[],	/* Parameter vector */
+    Tcl_Obj *const *objv,	/* Parameter vector */
     ClockOperation operation,	/* What operation are we doing: format, scan, add */
     const char *syntax)		/* Syntax of the current command */
 {
@@ -3501,11 +3505,11 @@ ClockParseFmtScnArgs(
 	    goto badOption;
 	}
     } else {
-	Tcl_Time now;
+	long long now;
 
     baseNow:
-	Tcl_GetTime(&now);
-	baseVal = (Tcl_WideInt) now.sec;
+	now = Tcl_GetDayTime();
+	baseVal = (Tcl_WideInt) (now / 1000000);
     }
 
     /*
@@ -3570,7 +3574,7 @@ ClockFormatObjCmd(
     void *clientData,		/* Client data containing literal pool */
     Tcl_Interp *interp,		/* Tcl interpreter */
     Tcl_Size objc,		/* Parameter count */
-    Tcl_Obj *const objv[])	/* Parameter values */
+    Tcl_Obj *const *objv)	/* Parameter values */
 {
     ClockClientData *dataPtr = (ClockClientData *)clientData;
     static const char *syntax = "clock format clockval|now "
@@ -3639,7 +3643,7 @@ ClockScanObjCmd(
     void *clientData,		/* Client data containing literal pool */
     Tcl_Interp *interp,		/* Tcl interpreter */
     Tcl_Size objc,		/* Parameter count */
-    Tcl_Obj *const objv[])	/* Parameter values */
+    Tcl_Obj *const *objv)	/* Parameter values */
 {
     ClockClientData *dataPtr = (ClockClientData *)clientData;
     static const char *syntax = "clock scan string "
@@ -4454,15 +4458,15 @@ ClockWeekdaysOffs(
  *	Refer to the user documentation to see what it exactly does.
  *
  * Syntax:
- *   clock add clockval ?count unit?... ?-option value?
+ *	clock add clockval ?count unit?... ?-option value?
  *
  * Parameters:
- *   clockval -- Starting time value
- *   count -- Amount of a unit of time to add
- *   unit -- Unit of time to add, must be one of:
- *	     years year months month weeks week
- *	     days day hours hour minutes minute
- *	     seconds second
+ *	clockval -- Starting time value
+ *	count -- Amount of a unit of time to add
+ *	unit -- Unit of time to add, must be one of:
+ *		years year months month weeks week
+ *		days day hours hour minutes minute
+ *		seconds second
  *
  * Options:
  *   -gmt BOOLEAN
@@ -4478,10 +4482,10 @@ ClockWeekdaysOffs(
  *	by the given offset(s) in order.
  *
  * Notes:
- *   It is possible that adding a number of months or years will adjust the
- *   day of the month as well.	For instance, the time at one month after
- *   31 January is either 28 or 29 February, because February has fewer
- *   than 31 days.
+ *	It is possible that adding a number of months or years will adjust the
+ *	day of the month as well.  For instance, the time at one month after
+ *	31 January is either 28 or 29 February, because February has fewer
+ *	than 31 days.
  *
  *----------------------------------------------------------------------
  */
@@ -4491,7 +4495,7 @@ ClockAddObjCmd(
     void *clientData,		/* Client data containing literal pool */
     Tcl_Interp *interp,		/* Tcl interpreter */
     Tcl_Size objc,		/* Parameter count */
-    Tcl_Obj *const objv[])	/* Parameter values */
+    Tcl_Obj *const *objv)	/* Parameter values */
 {
     static const char *syntax = "clock add clockval|now ?number units?..."
 	    "?-gmt boolean? "
@@ -4675,15 +4679,13 @@ ClockSecondsObjCmd(
     Tcl_Size objc,		/* Parameter count */
     Tcl_Obj *const *objv)	/* Parameter values */
 {
-    Tcl_Time now;
     Tcl_Obj *timeObj;
 
     if (objc != 1) {
 	Tcl_WrongNumArgs(interp, 0, objv, "clock seconds");
 	return TCL_ERROR;
     }
-    Tcl_GetTime(&now);
-    TclNewUIntObj(timeObj, (Tcl_WideUInt)now.sec);
+    TclNewUIntObj(timeObj, (Tcl_WideUInt)(Tcl_GetDayTime() / 1000000));
 
     Tcl_SetObjResult(interp, timeObj);
     return TCL_OK;
@@ -4733,7 +4735,7 @@ static size_t
 TzsetIfNecessary(void)
 {
     const WCHAR *tzNow;		/* Current value of TZ. */
-    Tcl_Time now;		/* Current time. */
+    long long now;		/* Current time. */
     size_t epoch;		/* The tz.epoch that the TZ was read at. */
 
     /*
@@ -4742,13 +4744,13 @@ TzsetIfNecessary(void)
      * no latency if environment was changed with tcl-env (compare both epoch values)
      */
 
-    Tcl_GetTime(&now);
-    if (now.sec == tz.lastRefresh && tz.envEpoch == TclEnvEpoch) {
+    now = Tcl_GetDayTime() / 1000000;
+    if (now == tz.lastRefresh && tz.envEpoch == TclEnvEpoch) {
 	return tz.epoch;
     }
 
     tz.envEpoch = TclEnvEpoch;
-    tz.lastRefresh = now.sec;
+    tz.lastRefresh = now;
 
     /* check in lock */
     Tcl_MutexLock(&clockMutex);

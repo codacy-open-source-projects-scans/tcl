@@ -149,7 +149,7 @@ TclUtfCount(
  *	prevent this.
  *
  *	Given a pointer to something else (an ASCII byte, a trail byte,
- *	or another byte	that can never begin a valid byte sequence such
+ *	or another byte that can never begin a valid byte sequence such
  *	as \xF5) this routine returns false.  That makes the routine poorly
  *	named, as it does not detect and report all invalid sequences.
  *
@@ -1572,9 +1572,9 @@ TclUtfNcmp(
 	if (ch1 != ch2) {
 	    /* Surrogates always report higher than non-surrogates */
 	    if (((ch1 & 0xFC00) == 0xD800)) {
-	    if ((ch2 & 0xFC00) != 0xD800) {
-		return ch1;
-	    }
+		if ((ch2 & 0xFC00) != 0xD800) {
+		    return ch1;
+		}
 	    } else if ((ch2 & 0xFC00) == 0xD800) {
 		return -ch2;
 	    }
@@ -1651,9 +1651,9 @@ TclUtfNcasecmp(
 	if (ch1 != ch2) {
 	    /* Surrogates always report higher than non-surrogates */
 	    if (((ch1 & 0xFC00) == 0xD800)) {
-	    if ((ch2 & 0xFC00) != 0xD800) {
-		return ch1;
-	    }
+		if ((ch2 & 0xFC00) != 0xD800) {
+		    return ch1;
+		}
 	    } else if ((ch2 & 0xFC00) == 0xD800) {
 		return -ch2;
 	    }

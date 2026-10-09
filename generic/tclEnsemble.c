@@ -18,19 +18,19 @@
  */
 
 static Tcl_Command	InitEnsembleFromOptions(Tcl_Interp *interp,
-			    Tcl_Size objc, Tcl_Obj *const objv[]);
+			    Tcl_Size objc, Tcl_Obj *const *objv);
 static int		ReadOneEnsembleOption(Tcl_Interp *interp,
 			    Tcl_Command token, Tcl_Obj *optionObj);
 static int		ReadAllEnsembleOptions(Tcl_Interp *interp,
 			    Tcl_Command token);
 static int		SetEnsembleConfigOptions(Tcl_Interp *interp,
 			    Tcl_Command token, Tcl_Size objc,
-			    Tcl_Obj *const objv[]);
+			    Tcl_Obj *const *objv);
 static inline int	EnsembleUnknownCallback(Tcl_Interp *interp,
 			    EnsembleConfig *ensemblePtr, Tcl_Size objc,
-			    Tcl_Obj *const objv[], Tcl_Obj **prefixObjPtr);
+			    Tcl_Obj *const *objv, Tcl_Obj **prefixObjPtr);
 static int		NsEnsembleImplementationCmdNR(void *clientData,
-			    Tcl_Interp *interp,Tcl_Size objc,Tcl_Obj *const objv[]);
+			    Tcl_Interp *interp,Tcl_Size objc,Tcl_Obj *const *objv);
 static void		BuildEnsembleConfig(EnsembleConfig *ensemblePtr);
 static int		NsEnsembleStringOrder(const void *strPtr1,
 			    const void *strPtr2);
@@ -152,7 +152,7 @@ TclNamespaceEnsembleCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Namespace *nsPtr = (Namespace *) TclGetCurrentNamespace(interp);
     Tcl_Command token;		/* The ensemble command. */
@@ -259,7 +259,7 @@ static Tcl_Command
 InitEnsembleFromOptions(
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Namespace *nsPtr = (Namespace *) TclGetCurrentNamespace(interp);
     Namespace *cxtPtr = nsPtr->parentPtr;
@@ -589,7 +589,7 @@ SetEnsembleConfigOptions(
     Tcl_Interp *interp,
     Tcl_Command token,		/* The ensemble to configure. */
     Tcl_Size objc,		/* The count of option-related arguments. */
-    Tcl_Obj *const objv[])	/* Option-related arguments. */
+    Tcl_Obj *const *objv)	/* Option-related arguments. */
 {
     Tcl_Size len;
     int allocatedMapFlag = 0;
@@ -1740,7 +1740,7 @@ TclEnsembleImplementationCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     return Tcl_NRCallObjProc2(interp, NsEnsembleImplementationCmdNR,
 	    clientData, objc, objv);
@@ -1751,7 +1751,7 @@ NsEnsembleImplementationCmdNR(
     void *clientData,		/* The ensemble this is the impl. of. */
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     EnsembleConfig *ensemblePtr = (EnsembleConfig *) clientData;
 				/* The ensemble itself. */
@@ -2150,14 +2150,10 @@ TclResetRewriteEnsemble(
 static int
 FreeER(
     void *data[],
-    TCL_UNUSED(Tcl_Interp *),
+    Tcl_Interp *interp,
     int result)
 {
-    Tcl_Obj **tmp = (Tcl_Obj **) data[0];
-    Tcl_Obj **store = (Tcl_Obj **) data[1];
-
-    Tcl_Free(store);
-    Tcl_Free(tmp);
+    TclStackFree(interp, data[0]);
     return result;
 }
 
@@ -2231,10 +2227,11 @@ TclSpellFix(
     search = iPtr->ensembleRewrite.sourceObjs;
     if (search[0] == NULL) {
 	store = (Tcl_Obj **) search[2];
-    }  else {
-	Tcl_Obj **tmp = (Tcl_Obj **) Tcl_Alloc(3 * sizeof(Tcl_Obj *));
+    } else {
+	Tcl_Obj **tmp = (Tcl_Obj **)
+		TclStackAlloc(interp, (3 + size) * sizeof(Tcl_Obj *));
 
-	store = (Tcl_Obj **) Tcl_Alloc(size * sizeof(Tcl_Obj *));
+	store = tmp + 3;
 	memcpy(store, iPtr->ensembleRewrite.sourceObjs,
 		size * sizeof(Tcl_Obj *));
 
@@ -2348,7 +2345,7 @@ EnsembleUnknownCallback(
     Tcl_Interp *interp,
     EnsembleConfig *ensemblePtr,/* The ensemble structure. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[],	/* Actual arguments. */
+    Tcl_Obj *const *objv,	/* Actual arguments. */
     Tcl_Obj **prefixObjPtr)	/* Where to write the prefix suggested by the
 				 * unknown callback. Must not be NULL. Only has
 				 * a meaningful value on TCL_OK. */
@@ -3437,10 +3434,15 @@ TclAttemptCompileProc(
 }
 
 /*
- * How to compile a subcommand to a _replacing_ invoke of its implementation
- * command.
+ *----------------------------------------------------------------------
+ *
+ * CompileToInvokedCommand --
+ *
+ *	How to compile a subcommand to a _replacing_ invoke of its
+ *	implementation command.
+ *
+ *----------------------------------------------------------------------
  */
-
 static void
 CompileToInvokedCommand(
     Tcl_Interp *interp,
@@ -3514,6 +3516,11 @@ CompileToInvokedCommand(
  * Note that these are NOT suitable for commands where there's an argument
  * that is a script, as an [info level] or [info frame] in the inner context
  * can see the difference.
+ *
+ * The compiler here looks to see if the number of arguments known to be
+ * passed is such that Tcl_WrongNumArgs() won't be called by the interpreted
+ * command; it knows how to check this because we use the correct wrapper
+ * that handles that.
  */
 
 static int
@@ -3527,7 +3534,7 @@ CompileBasicNArgCommand(
 {
     Tcl_Obj *objPtr;
 
-    if (parsePtr->numWords > INT_MAX) {
+    if (OutOfUintRange(parsePtr->numWords)) {
 	return TCL_ERROR;
     }
 

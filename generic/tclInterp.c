@@ -21,6 +21,41 @@
  */
 
 static const char *tclPreInitScript = NULL;
+
+/*
+ * TIP 755
+ *
+ * TclPostInitRecord holds callbacks to be invoked when an interpreter is
+ * initialized. A process-wide global database of callback registrations is
+ * kept. This is cached in the TSD for each thread to minimize locking when
+ * iterating through the records. This is the pattern followed in other
+ * components like the filesystem registration system except that we use a
+ * simpler array implementation in lieu of a linked list for better cache
+ * locality and fewer allocations. There should be only a few entries in any
+ * case.
+ */
+typedef struct TclPostInitRecord {
+    Tcl_PostInitProc *postInitProc;	/* The callback to invoke. */
+    void *clientData;			/* Opaque argument. */
+} TclPostInitRecord;
+
+/* Process-wide post-initialization registrations */
+typedef struct TclPostInitRecords {
+    TclPostInitRecord *recordsPtr;
+    size_t capacity;
+    size_t count;
+    size_t epoch;
+} TclPostInitRecords;
+static TclPostInitRecords postInitRecords = {NULL, 0, 0, 0};
+TCL_DECLARE_MUTEX(postInitMutex)
+
+/* Per thread cache of post-initialization registrations */
+typedef struct ThreadSpecificData {
+    TclPostInitRecords postInitCache;
+    size_t inUse;		/* When > 0, cache cannot be updated */
+} ThreadSpecificData;
+static Tcl_ThreadDataKey postInitTsdKey;
+
 
 /* Forward declaration */
 struct Target;
@@ -82,7 +117,7 @@ typedef struct {
 				 * record, and used when deleting the child
 				 * interpreter to delete it from the parent's
 				 * table. */
-    Tcl_Interp	*childInterp;	/* The child interpreter. */
+    Tcl_Interp *childInterp;	/* The child interpreter. */
     Tcl_Command interpCmd;	/* Interpreter object command. */
     Tcl_HashTable aliasTable;	/* Table which maps from names of commands in
 				 * child interpreter to struct Alias defined
@@ -104,7 +139,7 @@ typedef struct {
  */
 
 typedef struct Target {
-    Tcl_Command	childCmd;	/* Command for alias in child interp. */
+    Tcl_Command childCmd;	/* Command for alias in child interp. */
     Tcl_Interp *childInterp;	/* Child Interpreter. */
     struct Target *nextPtr;	/* Next in list of target records, or NULL if
 				 * at the end of the list of targets. */
@@ -237,29 +272,29 @@ static Tcl_ObjCmdProc2	AliasNRCmd;
 static Tcl_CmdDeleteProc AliasObjCmdDeleteProc;
 static Tcl_Interp *	GetInterp(Tcl_Interp *interp, Tcl_Obj *pathPtr);
 static Tcl_Interp *	GetInterp2(Tcl_Interp *interp, Tcl_Size objc,
-			    Tcl_Obj *const objv[]);
+			    Tcl_Obj *const *objv);
 static Tcl_InterpDeleteProc InterpInfoDeleteProc;
 static int		ChildBgerror(Tcl_Interp *interp,
 			    Tcl_Interp *childInterp, Tcl_Size objc,
-			    Tcl_Obj *const objv[]);
+			    Tcl_Obj *const *objv);
 static Tcl_Interp *	ChildCreate(Tcl_Interp *interp, Tcl_Obj *pathPtr,
 			    int safe);
 static int		ChildDebugCmd(Tcl_Interp *interp,
 			    Tcl_Interp *childInterp,
-			    Tcl_Size objc, Tcl_Obj *const objv[]);
+			    Tcl_Size objc, Tcl_Obj *const *objv);
 static int		ChildEval(Tcl_Interp *interp, Tcl_Interp *childInterp,
-			    Tcl_Size objc, Tcl_Obj *const objv[]);
+			    Tcl_Size objc, Tcl_Obj *const *objv);
 static int		ChildExpose(Tcl_Interp *interp,
 			    Tcl_Interp *childInterp, Tcl_Size objc,
-			    Tcl_Obj *const objv[]);
+			    Tcl_Obj *const *objv);
 static int		ChildHide(Tcl_Interp *interp, Tcl_Interp *childInterp,
-			    Tcl_Size objc, Tcl_Obj *const objv[]);
+			    Tcl_Size objc, Tcl_Obj *const *objv);
 static int		ChildHidden(Tcl_Interp *interp,
 			    Tcl_Interp *childInterp);
 static int		ChildInvokeHidden(Tcl_Interp *interp,
 			    Tcl_Interp *childInterp,
 			    const char *namespaceName,
-			    Tcl_Size objc, Tcl_Obj *const objv[]);
+			    Tcl_Size objc, Tcl_Obj *const *objv);
 static int		ChildMarkTrusted(Tcl_Interp *interp,
 			    Tcl_Interp *childInterp);
 static Tcl_CmdDeleteProc	ChildObjCmdDeleteProc;
@@ -268,13 +303,13 @@ static int		ChildSet(Tcl_Interp *interp,
 			    Tcl_Obj *valueObj);
 static int		ChildRecursionLimit(Tcl_Interp *interp,
 			    Tcl_Interp *childInterp, Tcl_Size objc,
-			    Tcl_Obj *const objv[]);
+			    Tcl_Obj *const *objv);
 static int		ChildCommandLimitCmd(Tcl_Interp *interp,
 			    Tcl_Interp *childInterp, Tcl_Size consumedObjc,
-			    Tcl_Size objc, Tcl_Obj *const objv[]);
+			    Tcl_Size objc, Tcl_Obj *const *objv);
 static int		ChildTimeLimitCmd(Tcl_Interp *interp,
 			    Tcl_Interp *childInterp, Tcl_Size consumedObjc,
-			    Tcl_Size objc, Tcl_Obj *const objv[]);
+			    Tcl_Size objc, Tcl_Obj *const *objv);
 static void		InheritLimitsFromParent(Tcl_Interp *childInterp,
 			    Tcl_Interp *parentInterp);
 static void		SetScriptLimitCallback(Tcl_Interp *interp, int type,
@@ -288,6 +323,7 @@ static void		RunLimitHandlers(LimitHandler *handlerPtr,
 static void		TimeLimitCallback(void *clientData);
 static int		RunPreInitScript(Tcl_Interp *interp);
 static Tcl_Obj *	LocatePreInitScript(Tcl_Interp *interp);
+static int		TclCallPostInitProcs(Tcl_Interp *interp);
 static Tcl_ObjCmdProc2	InitAutoPathObjCmd;
 #define INIT_AUTO_PATH_CMD "::tcl::InitAutoPath"
 
@@ -416,8 +452,8 @@ LocatePreInitScript(
     Tcl_Obj *searchedDirs;
     Tcl_Obj *initScriptPathPtr = NULL;
     Tcl_Obj *pathParts[3] = {NULL, NULL, NULL};
-    Tcl_Obj *exeDirPtr;
-    Tcl_Obj *exePtr;
+    Tcl_Obj *exeDirPtr = NULL;
+    Tcl_Obj *exePtr = NULL;
 
     /*
      * Need to track checked directories for error reporting. As a side
@@ -491,7 +527,6 @@ LocatePreInitScript(
      * executable (i.e. "parent" in the above comment).
      */
     pathParts[0] = TclPathPart(interp, exeDirPtr, TCL_PATH_DIRNAME);
-    Tcl_DecrRefCount(exeDirPtr);
     /*
      * Note: pathParts[] freed at function end. TclPathPart returns
      * Tcl_Obj with ref count incremented so do not incr ref pathParts[0] here.
@@ -507,6 +542,26 @@ LocatePreInitScript(
 
     TRY_PATH(TclJoinPath(3, pathParts, false));
 
+    /*
+     * Include the buildtime script location iff we are running in the build
+     * tree environment.
+     */
+#if defined(TCL_BUILDTIME_BINDIR) && defined(TCL_BUILDTIME_SCRDIR)
+    {
+	assert(exeDirPtr);
+#ifdef _WIN32
+	int runningInBuild =
+		strcasecmp(TCL_BUILDTIME_BINDIR, Tcl_GetString(exeDirPtr)) == 0;
+#else
+	int runningInBuild =
+		strcmp(TCL_BUILDTIME_BINDIR, Tcl_GetString(exeDirPtr)) == 0;
+#endif
+	if (runningInBuild) {
+	    TRY_PATH(Tcl_NewStringObj(TCL_BUILDTIME_SCRDIR, -1));
+	}
+    }
+#endif
+
   done:		/* initScriptPtr != NULL => dirPtr holds dir of init.tcl */
     if (initScriptPathPtr == NULL) {
 	Tcl_SetObjResult(interp, Tcl_ObjPrintf(
@@ -519,6 +574,10 @@ LocatePreInitScript(
     }
     if (initNamePtr != NULL) {
 	Tcl_DecrRefCount(initNamePtr);
+    }
+    /* NOTE exePtr NOT to be freed, only exeDirPtr */
+    if (exeDirPtr != NULL) {
+	Tcl_DecrRefCount(exeDirPtr);
     }
     for (size_t i = 0; i < sizeof(pathParts)/sizeof(pathParts[0]); i++) {
 	if (pathParts[i] != NULL) {
@@ -567,13 +626,13 @@ RunPreInitScript(
 	return TCL_ERROR;
     }
     int result = Tcl_FSEvalFile(interp, initScriptPathPtr);
-    Tcl_DecrRefCount(initScriptPathPtr);
     if (result != TCL_OK) {
 	Tcl_SetObjResult(interp, Tcl_ObjPrintf(
 		"Error sourcing Tcl initialization script from %s:\n%s",
 		Tcl_GetString(initScriptPathPtr),
 		Tcl_GetString(Tcl_GetObjResult(interp))));
     }
+    Tcl_DecrRefCount(initScriptPathPtr);
     return result;
 }
 
@@ -611,8 +670,8 @@ AddPathsInVarToList(
 		    continue;
 		}
 	    }
-	    /* Note: TclListObjAppendIfAbsent handles 0 and non-0 ref counts */
-	    if (TclListObjAppendIfAbsent(interp, toListPtr, pathPtr) != TCL_OK) {
+	    /* Note: TclListObjInsertIfAbsent handles 0 and non-0 ref counts */
+	    if (TclListObjInsertIfAbsent(interp, toListPtr, pathPtr, TCL_SIZE_MAX) != TCL_OK) {
 		return TCL_ERROR;
 	    }
 	}
@@ -648,7 +707,7 @@ InitAutoPathObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument vector. */
+    Tcl_Obj *const *objv)	/* Argument vector. */
 {
     if (objc != 1) {
 	Tcl_WrongNumArgs(interp, 1, objv, "");
@@ -681,18 +740,20 @@ InitAutoPathObjCmd(
 	    Tcl_DecrRefCount(autoPathPtr);
 	    return TCL_ERROR;
 	}
+    } else {
+	autoPathPtr = Tcl_DuplicateObj(autoPathPtr);
     }
 
     /* tcl_library and its parent */
     Tcl_Obj *objPtr = Tcl_GetVar2Ex(interp, "tcl_library", NULL, TCL_GLOBAL_ONLY);
     if (objPtr) {
-	if (TclListObjAppendIfAbsent(interp, autoPathPtr, objPtr) != TCL_OK) {
+	if (TclListObjInsertIfAbsent(interp, autoPathPtr, objPtr, TCL_SIZE_MAX) != TCL_OK) {
 	    Tcl_DecrRefCount(autoPathPtr);
 	    return TCL_ERROR;
 	}
 	objPtr = TclPathPart(interp, objPtr, TCL_PATH_DIRNAME);
 	if (objPtr) {
-	    result = TclListObjAppendIfAbsent(interp, autoPathPtr, objPtr);
+	    result = TclListObjInsertIfAbsent(interp, autoPathPtr, objPtr, TCL_SIZE_MAX);
 	    Tcl_DecrRefCount(objPtr); /* TclPathPart returns a reference */
 	    if (result != TCL_OK) {
 		Tcl_DecrRefCount(autoPathPtr);
@@ -710,8 +771,8 @@ InitAutoPathObjCmd(
 	Tcl_IncrRefCount(dirs[2]);
 	objPtr = TclJoinPath(2, &dirs[1], false);
 	if (objPtr != NULL) {
-	    /* Note: TclListObjAppendIfAbsent handles 0 and non-0 ref counts */
-	    (void) TclListObjAppendIfAbsent(NULL, autoPathPtr, objPtr);
+	    /* Note: TclListObjInsertIfAbsent handles 0 and non-0 ref counts */
+	    (void) TclListObjInsertIfAbsent(NULL, autoPathPtr, objPtr, TCL_SIZE_MAX);
 	}
     }
     for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); ++i) {
@@ -781,7 +842,13 @@ Tcl_Init(
     }
 
     result = RunPreInitScript(interp);
-    TclpSetInitialEncodings();
+    TclpSetInitialEncodings(); /* Even if above failed */
+
+    if (result == TCL_OK) {
+	/* Callbacks registered via Tcl_RegisterPostInitProc */
+	result = TclCallPostInitProcs(interp);
+    }
+
 end:
     *names = (*names)->nextPtr;
     return result;
@@ -936,7 +1003,7 @@ Tcl_InterpObjCmd(
     void *clientData,
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     return Tcl_NRCallObjProc2(interp, NRInterpCmd, clientData, objc, objv);
 }
@@ -946,7 +1013,7 @@ NRInterpCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Interp *childInterp;
     static const char *const options[] = {
@@ -1009,7 +1076,7 @@ NRInterpCmd(
 	if (objc == 4) {
 	    return AliasDescribe(interp, childInterp, objv[3]);
 	}
-	if ((objc == 5) && (TclGetString(objv[4])[0] == '\0')) {
+	if ((objc == 5) && (Tcl_IsEmpty(objv[4]))) {
 	    return AliasDelete(interp, childInterp, objv[3]);
 	}
 	if (objc > 5) {
@@ -1506,7 +1573,7 @@ GetInterp2(
     Tcl_Interp *interp,		/* Default interp if no interp was specified
 				 * on the command line. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     if (objc == 2) {
 	return interp;
@@ -1596,7 +1663,7 @@ Tcl_CreateAliasObj(
     Tcl_Interp *targetInterp,	/* Interpreter for target command. */
     const char *targetCmd,	/* Name of target command. */
     Tcl_Size objc,		/* How many additional arguments? */
-    Tcl_Obj *const objv[])	/* Argument vector. */
+    Tcl_Obj *const *objv)	/* Argument vector. */
 {
     Tcl_Obj *childObjPtr, *targetObjPtr;
     int result;
@@ -1804,7 +1871,7 @@ TclAliasCreate(
     Tcl_Obj *namePtr,		/* Name of alias cmd. */
     Tcl_Obj *targetCmdPtr,	/* Name of target cmd. */
     Tcl_Size objc,		/* Additional arguments to store */
-    Tcl_Obj *const objv[])	/* with alias. */
+    Tcl_Obj *const *objv)	/* with alias. */
 {
     Alias *aliasPtr;
     Tcl_HashEntry *hPtr;
@@ -2106,7 +2173,7 @@ AliasNRCmd(
     void *clientData,		/* Alias record. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument vector. */
+    Tcl_Obj *const *objv)	/* Argument vector. */
 {
     Alias *aliasPtr = (Alias *) clientData;
     Tcl_Size prefc, cmdc, i;
@@ -2159,7 +2226,7 @@ TclAliasObjCmd(
     void *clientData,		/* Alias record. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument vector. */
+    Tcl_Obj *const *objv)	/* Argument vector. */
 {
 #define ALIAS_CMDV_PREALLOC 10
     Alias *aliasPtr = (Alias *) clientData;
@@ -2250,7 +2317,7 @@ TclLocalAliasObjCmd(
     void *clientData,		/* Alias record. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument vector. */
+    Tcl_Obj *const *objv)	/* Argument vector. */
 {
 #define ALIAS_CMDV_PREALLOC 10
     Alias *aliasPtr = (Alias *) clientData;
@@ -2661,7 +2728,7 @@ ChildBgerror(
     Tcl_Interp *interp,		/* Interp for error return. */
     Tcl_Interp *childInterp,	/* Interp in which limit is set/queried. */
     Tcl_Size objc,		/* Set or Query. */
-    Tcl_Obj *const objv[])	/* Argument strings. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
     if (objc) {
 	Tcl_Size length;
@@ -2836,7 +2903,7 @@ TclChildObjCmd(
     void *clientData,		/* Child interpreter. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     return Tcl_NRCallObjProc2(interp, NRChildCmd, clientData, objc, objv);
 }
@@ -2846,7 +2913,7 @@ NRChildCmd(
     void *clientData,		/* Child interpreter. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Interp *childInterp = (Tcl_Interp *) clientData;
     static const char *const options[] = {
@@ -2881,7 +2948,7 @@ NRChildCmd(
 	    if (objc == 3) {
 		return AliasDescribe(interp, childInterp, objv[2]);
 	    }
-	    if (TclGetString(objv[3])[0] == '\0') {
+	    if (Tcl_IsEmpty(objv[3])) {
 		if (objc == 4) {
 		    return AliasDelete(interp, childInterp, objv[2]);
 		}
@@ -3104,7 +3171,7 @@ ChildDebugCmd(
     Tcl_Interp *childInterp,	/* The child interpreter in which command
 				 * will be evaluated. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     static const char *const debugTypes[] = {
 	"-frame", NULL
@@ -3175,7 +3242,7 @@ ChildEval(
     Tcl_Interp *childInterp,	/* The child interpreter in which command
 				 * will be evaluated. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     int result;
 
@@ -3283,7 +3350,7 @@ ChildExpose(
     Tcl_Interp *interp,		/* Interp for error return. */
     Tcl_Interp *childInterp,	/* Interp in which command will be exposed. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument strings. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
     const char *name;
 
@@ -3327,7 +3394,7 @@ ChildRecursionLimit(
     Tcl_Interp *interp,		/* Interp for error return. */
     Tcl_Interp *childInterp,	/* Interp in which limit is set/queried. */
     Tcl_Size objc,		/* Set or Query. */
-    Tcl_Obj *const objv[])	/* Argument strings. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
     Interp *iPtr;
     Tcl_WideInt limit;
@@ -3389,7 +3456,7 @@ ChildHide(
     Tcl_Interp *interp,		/* Interp for error return. */
     Tcl_Interp *childInterp,	/* Interp in which command will be exposed. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument strings. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
     const char *name;
 
@@ -3475,7 +3542,7 @@ ChildInvokeHidden(
 				 * be invoked. */
     const char *namespaceName,	/* The namespace to use, if any. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     if (Tcl_IsSafe(interp)) {
 	Tcl_SetObjResult(interp, Tcl_NewStringObj(
@@ -3830,7 +3897,7 @@ Tcl_LimitCheck(
 		(ticker % iPtr->limit.timeGranularity == 0))) {
 	long long now;
 
-	now = TclpGetMicroseconds();
+	now = Tcl_GetDayTime();
 	if (iPtr->limit.time <= now) {
 	    iPtr->limit.exceeded |= TCL_LIMIT_TIME;
 	    Tcl_Preserve(interp);
@@ -4373,6 +4440,26 @@ Tcl_LimitGetCommands(
  */
 
 void
+Tcl_LimitSetTime2(
+    Tcl_Interp *interp,
+    long long timeLimit)
+{
+    Interp *iPtr = (Interp *) interp;
+    long long nextMoment;
+
+    if (iPtr->limit.timeEvent != NULL) {
+	Tcl_DeleteTimerHandler(iPtr->limit.timeEvent);
+    }
+    nextMoment = timeLimit;
+    iPtr->limit.time = nextMoment;
+    nextMoment += 10;
+
+    iPtr->limit.timeEvent = TclCreateAbsoluteTimerHandler(nextMoment,
+	    TimeLimitCallback, interp);
+    iPtr->limit.exceeded &= ~TCL_LIMIT_TIME;
+}
+
+void
 Tcl_LimitSetTime(
     Tcl_Interp *interp,
     Tcl_Time *timeLimitPtr)
@@ -4459,6 +4546,15 @@ TimeLimitCallback(
  *
  *----------------------------------------------------------------------
  */
+
+long long
+Tcl_LimitGetTime2(
+    Tcl_Interp *interp)
+{
+    Interp *iPtr = (Interp *) interp;
+
+    return iPtr->limit.time;
+}
 
 void
 Tcl_LimitGetTime(
@@ -4824,7 +4920,7 @@ ChildCommandLimitCmd(
     Tcl_Interp *childInterp,	/* Interpreter being adjusted. */
     Tcl_Size consumedObjc,	/* Number of args already parsed. */
     Tcl_Size objc,		/* Total number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     static const char *const options[] = {
 	"-command", "-granularity", "-value", NULL
@@ -5013,7 +5109,7 @@ ChildTimeLimitCmd(
     Tcl_Interp *childInterp,	/* Interpreter being adjusted. */
     Tcl_Size consumedObjc,	/* Number of args already parsed. */
     Tcl_Size objc,		/* Total number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     static const char *const options[] = {
 	"-command", "-granularity", "-milliseconds", "-seconds", NULL
@@ -5065,13 +5161,13 @@ ChildTimeLimitCmd(
 		Tcl_LimitGetGranularity(childInterp, TCL_LIMIT_TIME)));
 
 	if (Tcl_LimitTypeEnabled(childInterp, TCL_LIMIT_TIME)) {
-	    Tcl_Time limitMoment;
+	    long long limitMoment;
 
-	    Tcl_LimitGetTime(childInterp, &limitMoment);
+	    limitMoment = Tcl_LimitGetTime2(childInterp);
 	    TclDictPut(NULL, dictPtr, options[2],
-		    Tcl_NewWideIntObj(limitMoment.usec / 1000));
+		    Tcl_NewWideIntObj((limitMoment % 1000000) / 1000));
 	    TclDictPut(NULL, dictPtr, options[3],
-		    Tcl_NewWideIntObj(limitMoment.sec));
+		    Tcl_NewWideIntObj(limitMoment / 1000000));
 	} else {
 	    Tcl_Obj *empty;
 
@@ -5104,19 +5200,19 @@ ChildTimeLimitCmd(
 	    break;
 	case OPT_MILLI:
 	    if (Tcl_LimitTypeEnabled(childInterp, TCL_LIMIT_TIME)) {
-		Tcl_Time limitMoment;
+		long long limitMoment;
 
-		Tcl_LimitGetTime(childInterp, &limitMoment);
+		limitMoment = Tcl_LimitGetTime2(childInterp);
 		Tcl_SetObjResult(interp,
-			Tcl_NewWideIntObj(limitMoment.usec/1000));
+			Tcl_NewWideIntObj((limitMoment % 1000000) / 1000));
 	    }
 	    break;
 	case OPT_SEC:
 	    if (Tcl_LimitTypeEnabled(childInterp, TCL_LIMIT_TIME)) {
-		Tcl_Time limitMoment;
+		long long limitMoment;
 
-		Tcl_LimitGetTime(childInterp, &limitMoment);
-		Tcl_SetObjResult(interp, Tcl_NewWideIntObj(limitMoment.sec));
+		limitMoment = Tcl_LimitGetTime2(childInterp);
+		Tcl_SetObjResult(interp, Tcl_NewWideIntObj(limitMoment / 1000000));
 	    }
 	    break;
 	default:
@@ -5131,10 +5227,10 @@ ChildTimeLimitCmd(
 	Tcl_Obj *scriptObj = NULL, *granObj = NULL;
 	Tcl_Obj *milliObj = NULL, *secObj = NULL;
 	int gran = 0;
-	Tcl_Time limitMoment;
+	long long limitMoment;
 	Tcl_WideInt tmp;
 
-	Tcl_LimitGetTime(childInterp, &limitMoment);
+	limitMoment = Tcl_LimitGetTime2(childInterp);
 	for (i=consumedObjc ; i<objc ; i+=2) {
 	    if (Tcl_GetIndexFromObj(interp, objv[i], options, "option", 0,
 		    &index) != TCL_OK) {
@@ -5174,7 +5270,7 @@ ChildTimeLimitCmd(
 			    "BADVALUE", (char *)NULL);
 		    return TCL_ERROR;
 		}
-		limitMoment.usec = tmp*1000;
+		limitMoment = (limitMoment / 1000000) * 1000000 + tmp*1000;
 		break;
 	    case OPT_SEC:
 		secObj = objv[i+1];
@@ -5192,7 +5288,7 @@ ChildTimeLimitCmd(
 			    "BADVALUE", (char *)NULL);
 		    return TCL_ERROR;
 		}
-		limitMoment.sec = (long long) tmp;
+		limitMoment = (limitMoment % 1000000) + tmp * 1000000;
 		break;
 	    default:
 		TCL_UNREACHABLE();
@@ -5224,16 +5320,7 @@ ChildTimeLimitCmd(
 	    }
 
 	    if (milliLen > 0 || secLen > 0) {
-		/*
-		 * Force usec to be in range [0..1000000), possibly
-		 * incrementing sec in the process. This makes it much easier
-		 * for people to write scripts that do small time increments.
-		 */
-
-		limitMoment.sec += limitMoment.usec / 1000000;
-		limitMoment.usec %= 1000000;
-
-		Tcl_LimitSetTime(childInterp, &limitMoment);
+		Tcl_LimitSetTime2(childInterp, limitMoment);
 		Tcl_LimitTypeSet(childInterp, TCL_LIMIT_TIME);
 	    } else {
 		Tcl_LimitTypeReset(childInterp, TCL_LIMIT_TIME);
@@ -5248,6 +5335,329 @@ ChildTimeLimitCmd(
 	}
 	return TCL_OK;
     }
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * TclInitStaticPackages --
+ *
+ *	Registers statically linked Tcl core packages so they are made
+ *	available to all Tcl interpreters created subsequently.
+ *
+ * Results:
+ *	None.
+ *
+ * Side effects:
+ *	The passed callback is added to the list of callbacks invoked
+ *	on interpreter initialization.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+TclInitStaticPackages(
+    Tcl_Interp *interp,
+    TCL_UNUSED(void *))
+{
+    int result = TCL_OK;
+    /*
+     * Note, we pass NULL, not interp, into Tcl_StaticLibrary. Passing
+     * interp causes Tcl_StaticLibrary to mark the package as already loaded
+     * so a subsequent load command becomes a no-op. Since we actually want
+     * the package init to be called at the point of the load command, we
+     * pass NULL.
+     */
+#if defined(_WIN32) && defined(STATIC_BUILD)
+    Tcl_StaticLibrary(NULL, "Dde", Dde_Init, Dde_SafeInit);
+    result = Tcl_Eval(interp, "package ifneeded dde 1.5.0 [list load {} Dde]");
+#else
+    (void)interp;		/* Silence compiler */
+#endif
+
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * TclPostInitThreadExitProc --
+ *
+ *      Called at thread exit time to clean up any structures related to
+ *      interpreter post-initialization callbacks.
+ *
+ * Results:
+ *	None.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+TclPostInitThreadExitProc(
+    void *clientData
+)
+{
+    ThreadSpecificData *tsdPtr = (ThreadSpecificData *)clientData;
+
+    assert(tsdPtr->inUse == 0);
+
+    if (tsdPtr->postInitCache.recordsPtr != NULL) {
+	Tcl_Free(tsdPtr->postInitCache.recordsPtr);
+	tsdPtr->postInitCache.recordsPtr = NULL;
+    }
+    tsdPtr->postInitCache.capacity = 0;
+    tsdPtr->postInitCache.count = 0;
+    tsdPtr->postInitCache.epoch = 0;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * TclCallPostInitProcs --
+ *
+ *      Iterates through the functions registered with Tcl_RegisterPostInitProc
+ *      calling them in order of their registration. The iteration is aborted
+ *      on any callback returning a value other than TCL_OK.
+ *
+ * Results:
+ *	The return value from the last function called.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+TclCallPostInitProcs(
+    Tcl_Interp *interp)		/* Interp undergoing post-initialization */
+{
+    /*
+     * Each thread keeps it own copy of the process-wide registrations.
+     * This simplifies implementation and avoids some thorny issues with
+     * locking and recursion. Inconsistency is not an issue since there
+     * are no guarantees between registration from one thread to when
+     * it is seen by other threads. For the same reason, the epoch checks
+     * are also outside a lock as in other components.
+     */
+    ThreadSpecificData *tsdPtr = TCL_TSD_INIT(&postInitTsdKey);
+
+    /*
+     * If we are already invoking callbacks, it means a callback is
+     * recursively initializing a new interpreter. We do not permit this as
+     * it leads to infinite recursion if care is not taken by the callback.
+     * See TIP 755.
+     * IF YOU REMOVE/MODIFY THIS CHECK, add a check for inUse==0 in the
+     * cache update epoch check below! Else you risk updating cache while in
+     * use.
+     */
+    if (tsdPtr->inUse) {
+	/* T: postinit-2.2 */
+	Tcl_SetResult(interp,
+		"Recursive interp create from post-initialization callback.",
+		TCL_STATIC);
+	return TCL_ERROR;
+    }
+
+    TclPostInitRecords *cachePtr = &tsdPtr->postInitCache;
+
+    /*
+     * If the cache is not in use and content has changed, update it. In the
+     * code below, the capacity counts guard against NULL pointer access.
+     */
+    if (tsdPtr->postInitCache.epoch != postInitRecords.epoch) {
+	/* T: postinit-1.* */
+	Tcl_MutexLock(&postInitMutex);
+	if (cachePtr->capacity < postInitRecords.count) {
+	    if (cachePtr->recordsPtr != NULL) {
+		Tcl_Free(cachePtr->recordsPtr);
+	    }
+	    cachePtr->capacity = postInitRecords.capacity;
+	    cachePtr->recordsPtr = (TclPostInitRecord *)Tcl_Alloc(
+		    cachePtr->capacity * sizeof(TclPostInitRecord));
+	    /* Remember to free on thread exit */
+	    Tcl_CreateThreadExitHandler(TclPostInitThreadExitProc, tsdPtr);
+	}
+	for (size_t i = 0; i < postInitRecords.count; ++i) {
+	    cachePtr->recordsPtr[i] = postInitRecords.recordsPtr[i];
+	}
+	cachePtr->count = postInitRecords.count;
+	cachePtr->epoch = postInitRecords.epoch;
+	Tcl_MutexUnlock(&postInitMutex);
+    }
+
+    /* Mark as in use to prevent modification in case of recursion. */
+    tsdPtr->inUse++;
+
+    /* Iterate through callbacks until done or error */
+    int result = TCL_OK;
+    int interpDeleted = 0;
+    Tcl_Preserve(interp);	/* Ensure it does not disappear in callback */
+    for (size_t i = 0; i < cachePtr->count; i++) {
+	result = cachePtr->recordsPtr[i].postInitProc(interp,
+		cachePtr->recordsPtr[i].clientData);
+	interpDeleted = Tcl_InterpDeleted(interp);
+	if (interpDeleted) {
+	    Tcl_SetObjResult(interp, Tcl_NewStringObj(
+		    "interpreter deleted during post-initialization callback",
+		    -1));
+	    result = TCL_ERROR;
+	    Tcl_SetErrorCode(interp, "TCL", "OPERATION", "INTERP", "DELETED",
+		    (char *)NULL);
+	    break;
+	}
+	if (result != TCL_OK) {
+	    /* T: postinit-2.1 */
+	    break;
+	}
+    }
+
+    /*
+     * If interpreter was deleted, do NOT release else it may be freed.
+     * Tcl_Init callers do not expect that eventuality and would lead to a
+     * crash. This way, there is a memory leak (since there will never be a
+     * matching Tcl_Release) but it is still better than a crash. Note the
+     * documentation warns against deleting the interpreter within a
+     * callback.
+     */
+    if (!interpDeleted) {
+	Tcl_Release(interp);
+    }
+
+    tsdPtr->inUse--;
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Tcl_RegisterPostInitProc --
+ *
+ *	Registers a callback to be called at the end of every interp
+ *	initialization at which time every callback is invoked in the order
+ *	of registration.
+ *
+ *	The registration key is the pair (proc, clientData). If the same
+ *	key is already registered, it will not be added again but this is not
+ *	treated as an error.
+ *
+ * Results:
+ *	Returns a standard Tcl result code.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Tcl_RegisterPostInitProc(
+    Tcl_PostInitProc *proc,	/* The callback to register. */
+    void *clientData)		/* Opaque argument to the callback. */
+{
+    if (proc == NULL) {
+	return TCL_ERROR;
+    }
+    Tcl_MutexLock(&postInitMutex);
+    if (postInitRecords.recordsPtr == NULL) {
+	/* T: postinit-1.* */
+	postInitRecords.capacity = 8;
+	postInitRecords.recordsPtr = (TclPostInitRecord *)Tcl_Alloc(
+		sizeof(TclPostInitRecord) * postInitRecords.capacity);
+	postInitRecords.count = 0;
+	/* Do not set epoch to 0 as recordsPtr is NULL after clear as well */
+    } else {
+	for (size_t i = 0; i < postInitRecords.count; ++i) {
+	    if (postInitRecords.recordsPtr[i].postInitProc == proc &&
+		    postInitRecords.recordsPtr[i].clientData == clientData) {
+		/* T: postinit-1.4 */
+		goto done;	/* Already present, don't add */
+	    }
+	}
+	if (postInitRecords.count == postInitRecords.capacity) {
+		   /* T: postinit-1.6 */
+	    postInitRecords.capacity *= 2;
+	    postInitRecords.recordsPtr = (TclPostInitRecord *)
+		    Tcl_Realloc(postInitRecords.recordsPtr,
+			sizeof(TclPostInitRecord) * postInitRecords.capacity);
+	}
+    }
+    /* T: postinit-1.* */
+    postInitRecords.recordsPtr[postInitRecords.count].postInitProc = proc;
+    postInitRecords.recordsPtr[postInitRecords.count].clientData = clientData;
+    postInitRecords.count++;
+    postInitRecords.epoch++;
+
+done: /* postInitMutex must be held at this point */
+    Tcl_MutexUnlock(&postInitMutex);
+    return TCL_OK;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Tcl_UnregisterPostInitProc --
+ *
+ *	Unregisters a callback registered through Tcl_RegisterPostInitProc.
+ *	The registration key is the pair (proc, clientData). It is not an
+ *	an error if the key does not exist.
+ *
+ * Results:
+ *	Returns a standard Tcl result code.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Tcl_UnregisterPostInitProc(
+    Tcl_PostInitProc *proc,	/* The callback to unregister. */
+    void *clientData)		/* Opaque argument included in matching. */
+{
+    if (proc == NULL) {
+	return TCL_ERROR;
+    }
+    Tcl_MutexLock(&postInitMutex);
+    if (postInitRecords.recordsPtr != NULL && postInitRecords.count > 0) {
+	size_t i;
+	for (i = 0; i < postInitRecords.count; ++i) {
+	    if (postInitRecords.recordsPtr[i].postInitProc == proc &&
+		    postInitRecords.recordsPtr[i].clientData == clientData) {
+		/* T: postinit-1.* */
+		break;
+	    }
+	}
+	if (i < postInitRecords.count) {
+	    while (++i < postInitRecords.count) {
+		postInitRecords.recordsPtr[i-1] = postInitRecords.recordsPtr[i];
+	    }
+	    postInitRecords.epoch++;
+	    postInitRecords.count--;
+	} /* else T: postinit-1.{8.9} */
+    }
+    Tcl_MutexUnlock(&postInitMutex);
+    return TCL_OK;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Tcl_ClearPostInitProcs --
+ *
+ *	Unregisters all callbacks registered through Tcl_RegisterPostInitProc.
+ *
+ * Results:
+ *	Returns a standard Tcl result code.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Tcl_ClearPostInitProcs()
+{
+    /* T: postinit-1.3 */
+    Tcl_MutexLock(&postInitMutex);
+    if (postInitRecords.recordsPtr) {
+	/*
+	 * Don't strictly need to free, setting count to 0 suffices but
+	 * freeing allows use of this function at exit time and keep
+	 * valgrind happy.
+	 */
+	Tcl_Free(postInitRecords.recordsPtr);
+	postInitRecords.recordsPtr = NULL;
+	postInitRecords.capacity = 0;
+    }
+    postInitRecords.count = 0;
+    postInitRecords.epoch++;
+    Tcl_MutexUnlock(&postInitMutex);
+    return TCL_OK;
 }
 
 /*

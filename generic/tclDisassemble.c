@@ -1354,7 +1354,7 @@ Tcl_DisassembleObjCmd(
     void *clientData,		/* What type of operation. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     static const char *const types[] = {
 	"constructor", "destructor",
@@ -1386,9 +1386,7 @@ Tcl_DisassembleObjCmd(
 
     switch (idx) {
     case DISAS_LAMBDA: {
-	Command cmd;
 	Tcl_Obj *nsObjPtr;
-	Tcl_Namespace *nsPtr;
 
 	/*
 	 * Compile (if uncompiled) and disassemble a lambda term.
@@ -1404,13 +1402,6 @@ Tcl_DisassembleObjCmd(
 	    return TCL_ERROR;
 	}
 
-	memset(&cmd, 0, sizeof(Command));
-	result = TclGetNamespaceFromObj(interp, nsObjPtr, &nsPtr);
-	if (result != TCL_OK) {
-	    return result;
-	}
-	cmd.nsPtr = (Namespace *) nsPtr;
-	procPtr->cmdPtr = &cmd;
 	result = TclPushProcCallFrame(procPtr, interp, objc, objv, 1);
 	if (result != TCL_OK) {
 	    return result;

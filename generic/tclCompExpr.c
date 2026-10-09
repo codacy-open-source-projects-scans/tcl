@@ -1325,7 +1325,7 @@ ParseExpr(
 
 	    /* Commas must appear only in function argument lists. */
 	    if (lexeme == COMMA) {
-		if  ((incompletePtr->lexeme != OPEN_PAREN)
+		if ((incompletePtr->lexeme != OPEN_PAREN)
 			|| (incompletePtr[-1].lexeme != FUNCTION)) {
 		    TclNewLiteralStringObj(msg,
 			    "unexpected \",\" outside function argument list");
@@ -2083,7 +2083,6 @@ ParseLexeme(
     if (TclParseNumber(NULL, literal, NULL, start, numBytes, &end,
 	    TCL_PARSE_NO_WHITESPACE) == TCL_OK) {
 	if (end < start + numBytes && !TclIsBareword(*end)) {
-
 	number:
 	    *lexemePtr = NUMBER;
 	    if (literalPtr) {
@@ -2240,6 +2239,7 @@ TclCompileExpr(
  *----------------------------------------------------------------------
  *
  * ExecConstantExprTree --
+ *
  *	Compiles and executes bytecode for the subexpression tree at index
  *	in the nodes array.  This subexpression must be constant, made up
  *	of only constant operators (not functions) and literals.
@@ -2597,7 +2597,7 @@ TclSingleOpCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     TclOpCmdClientData *occdPtr = (TclOpCmdClientData *)clientData;
     unsigned char lexeme;
@@ -2630,6 +2630,7 @@ TclSingleOpCmd(
  *----------------------------------------------------------------------
  *
  * TclSortingOpCmd --
+ *
  *	Implements the commands:
  *		<, <=, >, >=, ==, eq, lt, le, gt, ge
  *	in the ::tcl::mathop namespace. These commands are defined for
@@ -2650,7 +2651,7 @@ TclSortingOpCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     int code = TCL_OK;
 
@@ -2713,6 +2714,7 @@ TclSortingOpCmd(
  *----------------------------------------------------------------------
  *
  * TclVariadicOpCmd --
+ *
  *	Implements the commands: +, *, &, |, ^, **
  *	in the ::tcl::mathop namespace. These commands are defined for
  *	arbitrary number of arguments by repeatedly applying the base
@@ -2733,7 +2735,7 @@ TclVariadicOpCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     TclOpCmdClientData *occdPtr = (TclOpCmdClientData *)clientData;
     unsigned char lexeme;
@@ -2834,6 +2836,7 @@ TclVariadicOpCmd(
  *----------------------------------------------------------------------
  *
  * TclNoIdentOpCmd --
+ *
  *	Implements the commands: -, /
  *	in the ::tcl::mathop namespace. These commands are defined for
  *	arbitrary non-zero number of arguments by repeatedly applying the base
@@ -2854,7 +2857,7 @@ TclNoIdentOpCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     TclOpCmdClientData *occdPtr = (TclOpCmdClientData *)clientData;
 
@@ -2864,6 +2867,7 @@ TclNoIdentOpCmd(
     }
     return TclVariadicOpCmd(clientData, interp, objc, objv);
 }
+
 /*
  * Local Variables:
  * mode: c

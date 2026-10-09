@@ -486,7 +486,7 @@ TclFinalizeObjects(void)
  *
  *	This procedure is a helper which returns the thread-specific
  *	hash-table used to track continuation line information associated with
- *	Tcl_Obj*, and the objThreadMap, etc.
+ *	Tcl_Obj *, and the objThreadMap, etc.
  *
  * Results:
  *	A reference to the thread-data.
@@ -525,7 +525,7 @@ TclGetContLineTable(void)
  * TclContinuationsEnter --
  *
  *	This procedure is a helper which saves the continuation line
- *	information associated with a Tcl_Obj*.
+ *	information associated with a Tcl_Obj *.
  *
  * Results:
  *	A reference to the newly created continuation line location table.
@@ -589,7 +589,7 @@ TclContinuationsEnter(
  * TclContinuationsEnterDerived --
  *
  *	This procedure is a helper which computes the continuation line
- *	information associated with a Tcl_Obj* cut from the middle of a
+ *	information associated with a Tcl_Obj * cut from the middle of a
  *	script.
  *
  * Results:
@@ -682,7 +682,7 @@ TclContinuationsEnterDerived(
  * TclContinuationsCopy --
  *
  *	This procedure is a helper which copies the continuation line
- *	information associated with a Tcl_Obj* to another Tcl_Obj*. It is
+ *	information associated with a Tcl_Obj * to another Tcl_Obj *. It is
  *	assumed that both contain the same string/script. Use this when a
  *	script is duplicated because it was shared.
  *
@@ -718,11 +718,11 @@ TclContinuationsCopy(
  * TclContinuationsGet --
  *
  *	This procedure is a helper which retrieves the continuation line
- *	information associated with a Tcl_Obj*, if it has any.
+ *	information associated with a Tcl_Obj *, if it has any.
  *
  * Results:
  *	A reference to the continuation line location table, or NULL if the
- *	Tcl_Obj* has no such information associated with it.
+ *	Tcl_Obj * has no such information associated with it.
  *
  * Side effects:
  *	None.
@@ -1507,7 +1507,7 @@ int
 TclObjBeingDeleted(
     Tcl_Obj *objPtr)
 {
-    return (objPtr->length == TCL_INDEX_NONE);
+    return objPtr->length == TCL_INDEX_NONE;
 }
 
 /*
@@ -1954,7 +1954,7 @@ Tcl_GetBoolFromObj(
 {
     int result;
 
-    if ((flags & TCL_NULL_OK) && (objPtr == NULL || Tcl_GetString(objPtr)[0] == '\0')) {
+    if ((flags & TCL_NULL_OK) && (objPtr == NULL || Tcl_IsEmpty(objPtr))) {
 	result = -1;
 	goto boolEnd;
     } else if (objPtr == NULL) {
@@ -2104,11 +2104,11 @@ ParseBoolean(
 	}
 
 	if (TclHasInternalRep(objPtr, &tclBignumType)) {
-		return TCL_ERROR;
+	    return TCL_ERROR;
 	}
 
 	if (TclHasInternalRep(objPtr, &tclDoubleType)) {
-		return TCL_ERROR;
+	    return TCL_ERROR;
 	}
 	/* Handle dict separately, because it doesn't have a lengthProc */
 	if (TclHasInternalRep(objPtr, &tclDictType)) {
@@ -2664,7 +2664,6 @@ Tcl_GetLongFromObj(
 	     * values in the unsigned long range will fit in a long.
 	     */
 
-		{
 	    mp_int big;
 	    unsigned long scratch, value = 0;
 	    unsigned char *bytes = (unsigned char *) &scratch;
@@ -2673,7 +2672,7 @@ Tcl_GetLongFromObj(
 	    TclUnpackBignum(objPtr, big);
 	    if (mp_to_ubin(&big, bytes, sizeof(long), &numBytes) == MP_OKAY) {
 		while (numBytes-- > 0) {
-			value = (value << CHAR_BIT) | *bytes++;
+		    value = (value << CHAR_BIT) | *bytes++;
 		}
 		if (big.sign) {
 		    if (value <= 1 + (unsigned long)LONG_MAX) {
@@ -2687,21 +2686,20 @@ Tcl_GetLongFromObj(
 		    }
 		}
 	    }
-	    }
-#ifndef TCL_WIDE_INT_IS_LONG
-	tooLarge:
-#endif
-	    if (interp != NULL) {
-		const char *s = "integer value too large to represent";
-		Tcl_Obj *msg = Tcl_NewStringObj(s, -1);
-
-		Tcl_SetObjResult(interp, msg);
-		Tcl_SetErrorCode(interp, "ARITH", "IOVERFLOW", s, (char *)NULL);
-	    }
-	    return TCL_ERROR;
+	    goto tooLarge;
 	}
     } while (TclParseNumber(interp, objPtr, "integer", NULL, -1, NULL,
 	    TCL_PARSE_INTEGER_ONLY)==TCL_OK);
+    return TCL_ERROR;
+
+  tooLarge:
+    if (interp != NULL) {
+	const char *s = "integer value too large to represent";
+	Tcl_Obj *msg = Tcl_NewStringObj(s, -1);
+
+	Tcl_SetObjResult(interp, msg);
+	Tcl_SetErrorCode(interp, "ARITH", "IOVERFLOW", s, (char *)NULL);
+    }
     return TCL_ERROR;
 }
 
@@ -3162,8 +3160,8 @@ TclGetWideBitsFromObj(
  *	Attempt to return a Tcl_Size from the Tcl object "objPtr".
  *
  * Results:
- *  TCL_OK - the converted Tcl_Size value is stored in *sizePtr
- *  TCL_ERROR - the error message is stored in interp
+ *	TCL_OK - the converted Tcl_Size value is stored in *sizePtr
+ *	TCL_ERROR - the error message is stored in interp
  *
  * Side effects:
  *	The function may free up any existing internal representation.
@@ -3621,17 +3619,17 @@ TclSetBignumInternalRep(
  *
  * Tcl_GetNumberFromObj --
  *
- *      Extracts a number (of any possible numeric type) from an object.
+ *	Extracts a number (of any possible numeric type) from an object.
  *
  * Results:
- *      Whether the extraction worked. The type is stored in the variable
- *      referred to by the typePtr argument, and a pointer to the
- *      representation is stored in the variable referred to by the
- *      clientDataPtr.
+ *	Whether the extraction worked. The type is stored in the variable
+ *	referred to by the typePtr argument, and a pointer to the
+ *	representation is stored in the variable referred to by the
+ *	clientDataPtr.
  *
  * Side effects:
- *      Can allocate thread-specific data for handling the copy-out space for
- *      bignums; this space is shared within a thread.
+ *	Can allocate thread-specific data for handling the copy-out space for
+ *	bignums; this space is shared within a thread.
  *
  *----------------------------------------------------------------------
  */
@@ -3785,7 +3783,7 @@ int
 Tcl_IsShared(
     Tcl_Obj *objPtr)		/* The object to test for being shared. */
 {
-    return ((objPtr)->refCount > 1);
+    return objPtr->refCount > 1;
 }
 
 /*
@@ -4017,7 +4015,7 @@ Tcl_DbIsShared(
     Tcl_MutexUnlock(&tclObjMutex);
 #endif /* TCL_COMPILE_STATS */
 
-    return ((objPtr)->refCount > 1);
+    return objPtr->refCount > 1;
 }
 
 /*
@@ -4594,7 +4592,7 @@ Tcl_RepresentationCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Obj *descObj;
 

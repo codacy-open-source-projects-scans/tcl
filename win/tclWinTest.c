@@ -46,6 +46,8 @@ static Tcl_ObjCmdProc2	TestExceptionCmd;
 static int		TestplatformChmod(const char *nativePath, int pmode);
 static Tcl_ObjCmdProc2	TestchmodCmd;
 static Tcl_ObjCmdProc2	TestlongpathsettingCmd;
+static Tcl_ObjCmdProc2	TestfilesddlCmd;
+
 /*
  *----------------------------------------------------------------------
  *
@@ -81,6 +83,7 @@ TclplatformtestInit(
     Tcl_CreateObjCommand2(interp, "testlongpathsetting",
 	TestlongpathsettingCmd, NULL, NULL);
 
+    Tcl_CreateObjCommand2(interp, "testfilesddl", TestfilesddlCmd, NULL, NULL);
     return TCL_OK;
 }
 
@@ -107,7 +110,7 @@ TesteventloopCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     static int *framePtr = NULL;/* Pointer to integer on stack frame of
 				 * innermost invocation of the "wait"
@@ -183,7 +186,7 @@ TestvolumetypeCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
 #define VOL_BUF_SIZE 32
     int found;
@@ -247,14 +250,14 @@ TestvolumetypeCmd(
 static int
 TestwinclockCmd(
     TCL_UNUSED(void *),
-    Tcl_Interp* interp,		/* Tcl interpreter */
+    Tcl_Interp *interp,		/* Tcl interpreter */
     Tcl_Size objc,		/* Argument count */
-    Tcl_Obj *const objv[])	/* Argument vector */
+    Tcl_Obj *const *objv)	/* Argument vector */
 {
     static const FILETIME posixEpoch = { 0xD53E8000, 0x019DB1DE };
 				/* The Posix epoch, expressed as a Windows
 				 * FILETIME */
-    Tcl_Time tclTime;		/* Tcl clock */
+    long long tclTime;		/* Tcl clock */
     FILETIME sysTime;		/* System clock */
     Tcl_Obj *result;		/* Result of the command */
     LARGE_INTEGER t1, t2;
@@ -267,7 +270,7 @@ TestwinclockCmd(
 
     QueryPerformanceCounter(&p1);
 
-    Tcl_GetTime(&tclTime);
+    tclTime = Tcl_GetDayTime();
     GetSystemTimeAsFileTime(&sysTime);
     t1.LowPart = posixEpoch.dwLowDateTime;
     t1.HighPart = posixEpoch.dwHighDateTime;
@@ -282,8 +285,8 @@ TestwinclockCmd(
 	    Tcl_NewWideIntObj(t2.QuadPart / 10000000));
     Tcl_ListObjAppendElement(interp, result,
 	    Tcl_NewWideIntObj((t2.QuadPart / 10) % 1000000));
-    Tcl_ListObjAppendElement(interp, result, Tcl_NewWideIntObj(tclTime.sec));
-    Tcl_ListObjAppendElement(interp, result, Tcl_NewWideIntObj(tclTime.usec));
+    Tcl_ListObjAppendElement(interp, result, Tcl_NewWideIntObj(tclTime / 1000000));
+    Tcl_ListObjAppendElement(interp, result, Tcl_NewWideIntObj(tclTime % 1000000));
 
     Tcl_ListObjAppendElement(interp, result, Tcl_NewWideIntObj(p1.QuadPart));
     Tcl_ListObjAppendElement(interp, result, Tcl_NewWideIntObj(p2.QuadPart));
@@ -296,7 +299,7 @@ TestwinclockCmd(
 static int
 TestwinsleepCmd(
     TCL_UNUSED(void *),
-    Tcl_Interp* interp,		/* Tcl interpreter */
+    Tcl_Interp *interp,		/* Tcl interpreter */
     Tcl_Size objc,		/* Parameter count */
     Tcl_Obj *const * objv)	/* Parameter vector */
 {
@@ -339,9 +342,9 @@ TestwinsleepCmd(
 static int
 TestExceptionCmd(
     TCL_UNUSED(void *),
-    Tcl_Interp* interp,		/* Tcl interpreter */
+    Tcl_Interp *interp,		/* Tcl interpreter */
     Tcl_Size objc,		/* Argument count */
-    Tcl_Obj *const objv[])	/* Argument vector */
+    Tcl_Obj *const *objv)	/* Argument vector */
 {
     static const char *const cmds[] = {
 	"access_violation", "datatype_misalignment", "array_bounds",
@@ -395,8 +398,15 @@ TestExceptionCmd(
 }
 
 /*
- * This "chmod" works sufficiently for test script purposes. Do not expect
- * it to be exact emulation of Unix chmod (not sure if that's even possible)
+ *----------------------------------------------------------------------
+ *
+ * TestplatformChmod --
+ *
+ *	This "chmod" works sufficiently for test script purposes. Do not expect
+ *	it to be exact emulation of Unix chmod (not sure if that's even
+ *	possible).
+ *
+ *----------------------------------------------------------------------
  */
 static int
 TestplatformChmod(
@@ -675,6 +685,8 @@ TestchmodCmd(
 }
 
 /*
+ *----------------------------------------------------------------------
+ *
  * TestlongpathsettingCmd --
  *
  *	Returns whether long path support is enabled on this system.
@@ -682,6 +694,8 @@ TestchmodCmd(
  *
  * Results:
  *	1 if long path support is enabled, 0 if not.
+ *
+ *----------------------------------------------------------------------
  */
 static int
 TestlongpathsettingCmd(
@@ -708,6 +722,127 @@ TestlongpathsettingCmd(
     return TCL_OK;
 }
 
+/*
+ *------------------------------------------------------------------------
+ *
+ * TestfilesddlCmd --
+ *
+ *	Implements the Tcl command testfilesddl
+ *	    testfilesddl PATH ?SDDL?
+ *	If SDDL is specified, sets the security descriptor of PATH.
+ *	In both cases, the original security descriptor is returned.
+ *
+ * Results:
+ *	TCL_OK    - Success.
+ *	TCL_ERROR - Error.
+ *
+ * Side effects:
+ *	Interpreter result holds SDDL or error message.
+ *
+ *------------------------------------------------------------------------
+ */
+int
+TestfilesddlCmd (
+    TCL_UNUSED(void *),
+    Tcl_Interp *interp,		/* Current interpreter. */
+    Tcl_Size objc,		/* Number of arguments. */
+    Tcl_Obj *const objv[])	/* Argument objects. */
+{
+    if (objc < 2 || objc > 3) {
+	Tcl_WrongNumArgs(interp, 1, objv, "PATH ?SDDL?");
+	return TCL_ERROR;
+    }
+
+    Tcl_DString ds;
+    Tcl_DStringInit(&ds);
+
+    /* Note no SACL because that requires privileges */
+    PSECURITY_DESCRIPTOR secdPtr = NULL;
+    WCHAR *sddlPtr = NULL;
+    SECURITY_INFORMATION secInfo = OWNER_SECURITY_INFORMATION
+				 | GROUP_SECURITY_INFORMATION
+				 | DACL_SECURITY_INFORMATION;
+    const char *errorMessage = "";
+    WCHAR *nativePath = (WCHAR *)Tcl_FSGetNativePath(objv[1]);
+    DWORD err = GetNamedSecurityInfoW(nativePath, SE_FILE_OBJECT,
+	    secInfo, NULL, NULL, NULL, NULL, &secdPtr);
+    if (err != ERROR_SUCCESS) {
+	errorMessage = "Could not read security descriptor";
+	goto vamoose;
+    }
+
+    if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(secdPtr,
+		SDDL_REVISION_1, secInfo, &sddlPtr, NULL)) {
+	err = GetLastError();
+	errorMessage = "Failed to convert security descriptor to SDDL";
+	goto vamoose;
+    }
+
+    (void)Tcl_Char16ToUtfDString(sddlPtr, -1, &ds);
+    /* The original sddl is returned in all cases */
+    Tcl_DStringResult(interp, &ds);
+
+    if (objc == 3) {
+	/* Set a new security descriptor */
+	LocalFree(secdPtr);
+	secdPtr = NULL;
+	Tcl_Size utflen;
+	const char *utfPtr = Tcl_GetStringFromObj(objv[2], &utflen);
+	WCHAR *newSddl = (WCHAR *) Tcl_UtfToChar16DString(utfPtr, utflen, &ds);
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(newSddl,
+		    SDDL_REVISION_1, &secdPtr, NULL)) {
+	    err = GetLastError();
+	    errorMessage = "Failed to convert SDDL to security descriptor";
+	    goto vamoose;
+	}
+	secInfo = 0;
+	PSID ownerPtr = NULL;
+	PSID groupPtr = NULL;
+	PACL daclPtr = NULL;
+	BOOL daclPresent = FALSE;
+	BOOL defaulted = FALSE;
+	SECURITY_DESCRIPTOR_CONTROL control = 0;
+	DWORD revision;
+	if (GetSecurityDescriptorOwner(secdPtr, &ownerPtr, &defaulted)
+		&& ownerPtr != NULL) {
+	    secInfo |= OWNER_SECURITY_INFORMATION;
+	}
+	if (GetSecurityDescriptorGroup(secdPtr, &groupPtr, &defaulted)
+		&& groupPtr != NULL) {
+	    secInfo |= GROUP_SECURITY_INFORMATION;
+	}
+	if (GetSecurityDescriptorDacl(secdPtr, &daclPresent, &daclPtr, &defaulted)
+		&& daclPresent) {
+	    /* Note the check above is NOT daclPtr == NULL! */
+	    secInfo |= DACL_SECURITY_INFORMATION;
+	}
+	if (GetSecurityDescriptorControl(secdPtr, &control, &revision)) {
+	    if (control & SE_DACL_PROTECTED) {
+		secInfo |= PROTECTED_DACL_SECURITY_INFORMATION;
+	    }
+	}
+	errorMessage = "Could not set security descriptor";
+	err = SetNamedSecurityInfoW(nativePath, SE_FILE_OBJECT, secInfo,
+		ownerPtr, groupPtr, daclPtr, NULL);
+    }
+
+vamoose:
+    Tcl_DStringFree(&ds);
+    if (sddlPtr) {
+	LocalFree(sddlPtr);
+    }
+    if (secdPtr) {
+	LocalFree(secdPtr);
+    }
+    if (err != ERROR_SUCCESS) {
+	Tcl_SetObjResult(interp,
+		Tcl_ObjPrintf("%s (path %s, Windows error %lu)", errorMessage,
+			Tcl_GetString(objv[1]), err));
+	return TCL_ERROR;
+    }
+    return TCL_OK;
+}
+
 /*
  * Local Variables:
  * mode: c

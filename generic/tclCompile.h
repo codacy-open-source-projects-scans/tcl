@@ -1,11 +1,11 @@
 /*
  * tclCompile.h --
  *
- * Copyright (c) 1996-1998 Sun Microsystems, Inc.
- * Copyright (c) 1998-2000 by Scriptics Corporation.
- * Copyright (c) 2001 by Kevin B. Kenny. All rights reserved.
- * Copyright (c) 2007 Daniel A. Steffen <das@users.sourceforge.net>
- * Copyright (c) 2025 Donal K. Fellows <dkf@users.sourceforge.net>
+ * Copyright © 1996-1998 Sun Microsystems, Inc.
+ * Copyright © 1998-2000 by Scriptics Corporation.
+ * Copyright © 2001 by Kevin B. Kenny. All rights reserved.
+ * Copyright © 2007 Daniel A. Steffen <das@users.sourceforge.net>
+ * Copyright © 2025 Donal K. Fellows <dkf@users.sourceforge.net>
  *
  * See the file "license.terms" for information on usage and redistribution of
  * this file, and for a DISCLAIMER OF ALL WARRANTIES.
@@ -90,6 +90,43 @@ typedef Tcl_Size Tcl_AuxDataRef;
  * The type of "catch ranges" returned from TclCreateExceptRange(), etc.
  */
 typedef Tcl_Size Tcl_ExceptionRange;
+
+/*
+ *------------------------------------------------------------------------
+ *
+ * OutOfUintRange, OutOfUIntRangeUpper --
+ *
+ *	Test if the argument is outside of the range of an unsigned int.
+ *
+ *------------------------------------------------------------------------
+ */
+static inline bool
+OutOfUintRange(
+    Tcl_Size value)
+{
+    // Not sure what to do on 32-bit platforms that don't have PTRDIFF_MAX.
+#if defined(PTRDIFF_MAX) && PTRDIFF_MAX == INT_MAX
+    return value < 0;
+#else
+    return value < 0 || value > (Tcl_Size) UINT_MAX;
+#endif
+}
+
+static inline bool
+OutOfUintRangeUpper(
+#if defined(PTRDIFF_MAX) && PTRDIFF_MAX == INT_MAX
+    TCL_UNUSED(Tcl_Size))
+#else
+    Tcl_Size value)
+#endif
+{
+    // Not sure what to do on 32-bit platforms that don't have PTRDIFF_MAX.
+#if defined(PTRDIFF_MAX) && PTRDIFF_MAX == INT_MAX
+    return false;
+#else
+    return value > (Tcl_Size) UINT_MAX;
+#endif
+}
 
 /*
  * The structure used to implement Tcl "exceptions" (exceptional returns): for
@@ -936,6 +973,7 @@ enum TclInstruction {
     INST_TCLOO_NEXT_CLASS_LIST,
     INST_ARITH_SERIES,
     INST_UPLEVEL,
+    INST_FOREACH_INDEX,
 
     /* The last opcode */
     LAST_INST_OPCODE
@@ -1373,7 +1411,7 @@ MODULE_SCOPE Tcl_Obj *	TclGetInnerContext(Tcl_Interp *interp,
 MODULE_SCOPE Tcl_Obj *	TclNewInstNameObj(unsigned char inst);
 MODULE_SCOPE int	TclPushProcCallFrame(void *clientData,
 			    Tcl_Interp *interp, Tcl_Size objc,
-			    Tcl_Obj *const objv[], int isLambda);
+			    Tcl_Obj *const *objv, int isLambda);
 
 /*
  *----------------------------------------------------------------
@@ -1810,9 +1848,9 @@ TclGetInt4AtPtr(
 {
     return (int) (
 	(TclGetUInt1AtPtr(p) << 24) |
-	(p[1] << 16) |
-	(p[2] <<  8) |
-	(p[3]      ));
+	((unsigned int)p[1] << 16) |
+	((unsigned int)p[2] <<  8) |
+	((unsigned int)p[3]      ));
 }
 
 static inline unsigned
@@ -1820,10 +1858,10 @@ TclGetUInt4AtPtr(
     const unsigned char *p)
 {
     return (unsigned) (
-	(p[0] << 24) |
-	(p[1] << 16) |
-	(p[2] <<  8) |
-	(p[3]      ));
+	((unsigned int)p[0] << 24) |
+	((unsigned int)p[1] << 16) |
+	((unsigned int)p[2] <<  8) |
+	((unsigned int)p[3]      ));
 }
 
 /*
@@ -1991,10 +2029,6 @@ ExceptionRangeEnds(
 
 #define AnonymousLocal(envPtr) \
     (TclFindCompiledLocal(NULL, /*nameChars*/ 0, /*create*/ true, (envPtr)))
-#define LocalScalar(chars,len,envPtr) \
-    TclLocalScalar(chars, len, envPtr)
-#define LocalScalarFromToken(tokenPtr,envPtr) \
-    TclLocalScalarFromToken(tokenPtr, envPtr)
 
 /*
  * Flags bits used by TclPushVarName.

@@ -94,7 +94,7 @@ static size_t total_frees = 0;
 static size_t current_bytes_malloced = 0;
 static size_t maximum_bytes_malloced = 0;
 static size_t current_malloc_packets = 0;
-static size_t  maximum_malloc_packets = 0;
+static size_t maximum_malloc_packets = 0;
 static size_t break_on_malloc = 0;
 static size_t trace_on_at_malloc = 0;
 static int alloc_tracing = FALSE;
@@ -798,7 +798,7 @@ MemoryCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Obj values of arguments. */
+    Tcl_Obj *const *objv)	/* Obj values of arguments. */
 {
     const char *fileName;
     FILE *fileP;
@@ -968,7 +968,7 @@ CheckmemCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Interpreter for evaluation. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Obj values of arguments. */
+    Tcl_Obj *const *objv)	/* Obj values of arguments. */
 {
     if (objc != 2) {
 	Tcl_WrongNumArgs(interp, 1, objv, "fileName");
@@ -1232,15 +1232,15 @@ TclDumpMemoryInfo(
  *
  * TclAllocElemsEx --
  *
- *    See TclAttemptAllocElemsEx. This function differs in that it panics
- *    on failure.
+ *	See TclAttemptAllocElemsEx. This function differs in that it panics
+ *	on failure.
  *
  * Results:
- *    Non-NULL pointer to allocated memory block.
+ *	Non-NULL pointer to allocated memory block.
  *
  * Side effects:
- *    Panics if memory of at least the requested size could not be
- *    allocated.
+ *	Panics if memory of at least the requested size could not be
+ *	allocated.
  *
  *------------------------------------------------------------------------
  */
@@ -1267,14 +1267,13 @@ TclAllocElemsEx(
  *
  * TclAttemptReallocElemsEx --
  *
- *    Attempts to allocate (oldPtr == NULL) or reallocate memory of the
- *    requested size plus some more for future growth. The amount of
- *    reallocation is adjusted depending on failure.
- *
+ *	Attempts to allocate (oldPtr == NULL) or reallocate memory of the
+ *	requested size plus some more for future growth. The amount of
+ *	reallocation is adjusted depending on failure.
  *
  * Results:
- *    Pointer to allocated memory block which is at least as large
- *    as the requested size or NULL if allocation failed.
+ *	Pointer to allocated memory block which is at least as large
+ *	as the requested size or NULL if allocation failed.
  *
  *------------------------------------------------------------------------
  */
@@ -1336,15 +1335,15 @@ TclAttemptReallocElemsEx(
  *
  * TclReallocElemsEx --
  *
- *    See TclAttemptReallocElemsEx. This function differs in that it panics
- *    on failure.
+ *	See TclAttemptReallocElemsEx. This function differs in that it panics
+ *	on failure.
  *
  * Results:
- *    Non-NULL pointer to allocated memory block.
+ *	Non-NULL pointer to allocated memory block.
  *
  * Side effects:
- *    Panics if memory of at least the requested size could not be
- *    allocated.
+ *	Panics if memory of at least the requested size could not be
+ *	allocated.
  *
  *------------------------------------------------------------------------
  */

@@ -520,9 +520,9 @@ MakeByteArray(
 	    if (demandProper) {
 		if (interp) {
 		    Tcl_SetObjResult(interp, Tcl_ObjPrintf(
-			    "expected byte sequence but character %"
-			    TCL_Z_MODIFIER "u was '%1s' (U+%06X)",
-			    dst - byteArrayPtr->bytes, src, ch));
+			    "expected code point values below 0xff but value at byte offset %"
+			    TCL_Z_MODIFIER "u was 0x%x",
+			    dst - byteArrayPtr->bytes, ch));
 		    Tcl_SetErrorCode(interp, "TCL", "VALUE", "BYTES", (char *)NULL);
 		}
 		Tcl_Free(byteArrayPtr);
@@ -806,7 +806,7 @@ BinaryFormatCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Size arg;		/* Index of next argument to consume. */
     int value = 0;		/* Current integer value to be packed.
@@ -1318,7 +1318,7 @@ BinaryScanCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Size arg;		/* Index of next argument to consume. */
     int value = 0;		/* Current integer value to be packed.
@@ -2009,7 +2009,7 @@ FormatNumber(
 	    if (fabs(dvalue) > (FLT_MAX + pow(2, (FLT_MAX_EXP - FLT_MANT_DIG - 1)))) {
 		fvalue = (dvalue >= 0.0) ? INFINITY : -INFINITY;	// c99
 	    } else {
-	    fvalue = (dvalue >= 0.0) ? FLT_MAX : -FLT_MAX;
+		fvalue = (dvalue >= 0.0) ? FLT_MAX : -FLT_MAX;
 	    }
 	} else {
 	    fvalue = (float) dvalue;
@@ -2402,7 +2402,7 @@ BinaryEncodeHex(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Obj *resultObj = NULL;
     unsigned char *data = NULL;
@@ -2450,7 +2450,7 @@ BinaryDecodeHex(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Obj *resultObj = NULL;
     unsigned char *data, *datastart, *dataend;
@@ -2577,7 +2577,7 @@ BinaryEncode64(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Obj *resultObj;
     unsigned char *data, *limit;
@@ -2705,7 +2705,7 @@ BinaryEncodeUu(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Obj *resultObj;
     unsigned char *data, *start, *cursor;
@@ -2714,6 +2714,7 @@ BinaryEncodeUu(
     const unsigned char SingleNewline[] = { UCHAR('\n') };
     const unsigned char *wrapchar = SingleNewline;
     Tcl_Size n, i, j, offset, count = 0, wrapcharlen = sizeof(SingleNewline);
+    Tcl_WideUInt resLength;
     enum { OPT_MAXLEN, OPT_WRAPCHAR } index;
     static const char *const optStrings[] = { "-maxlen", "-wrapchar", NULL };
 
@@ -2759,21 +2760,38 @@ BinaryEncodeUu(
 		    continue;
 		case '\n':
 		    numBytes--;
-		    break;
+		    goto end_check_loop;
 		default:
-		    goto badwrap;
+		badwrap:
+			Tcl_SetObjResult(interp, Tcl_NewStringObj(
+				"invalid wrapchar; will defeat decoding",
+				-1));
+			Tcl_SetErrorCode(interp, "TCL", "BINARY",
+				"ENCODE", "WRAPCHAR", (char *)NULL);
+			return TCL_ERROR;
 		}
 	    }
+	    end_check_loop:
 	    if (numBytes) {
-	    badwrap:
-		Tcl_SetObjResult(interp, Tcl_NewStringObj(
-			"invalid wrapchar; will defeat decoding", -1));
-		Tcl_SetErrorCode(interp, "TCL", "BINARY",
-			"ENCODE", "WRAPCHAR", (char *)NULL);
-		return TCL_ERROR;
+		goto badwrap;
 	    }
 	    break;
 	}
+    }
+
+    data = Tcl_GetByteArrayFromObj(objv[objc - 1], &count);
+    if (data == NULL) {
+	return TCL_ERROR;
+    }
+    rawLength = (lineLength - 1) * 3 / 4;
+    resLength = (Tcl_WideUInt)(lineLength + wrapcharlen) *
+	    (Tcl_WideUInt)((count + (rawLength - 1)) / rawLength);
+    if (resLength > TCL_SIZE_MAX) {
+	Tcl_SetObjResult(interp, Tcl_ObjPrintf(
+	    "max size for a Tcl value (%" TCL_SIZE_MODIFIER "u bytes) exceeded",
+	    TCL_SIZE_MAX));
+	Tcl_SetErrorCode(interp, "TCL", "MEMORY", (char *)NULL);
+	return TCL_ERROR;
     }
 
     /*
@@ -2781,16 +2799,9 @@ BinaryEncodeUu(
      * enough".
      */
 
-    offset = 0;
-    data = Tcl_GetBytesFromObj(interp, objv[objc - 1], &count);
-    if (data == NULL) {
-	return TCL_ERROR;
-    }
     TclNewObj(resultObj);
-    rawLength = (lineLength - 1) * 3 / 4;
-    start = cursor = Tcl_SetByteArrayLength(resultObj,
-	    (lineLength + wrapcharlen) *
-	    ((count + (rawLength - 1)) / rawLength));
+    offset = 0;
+    start = cursor = Tcl_SetByteArrayLength(resultObj, resLength);
     n = bits = 0;
 
     /*
@@ -2856,7 +2867,7 @@ BinaryDecodeUu(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Obj *resultObj = NULL;
     unsigned char *data, *datastart, *dataend;
@@ -3032,7 +3043,7 @@ BinaryDecode64(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Obj *resultObj = NULL;
     unsigned char *data, *datastart, *dataend, c = '\0';

@@ -194,7 +194,7 @@ InstructionDesc const tclInstructionTable[] = {
 	/* Bitwise or:	push (stknext | stktop) */
     TCL_INSTRUCTION_ENTRY(
 	"bitxor",		-1),
-	/* Bitwise xor	push (stknext ^ stktop) */
+	/* Bitwise xor:	push (stknext ^ stktop) */
     TCL_INSTRUCTION_ENTRY(
 	"bitand",		-1),
 	/* Bitwise and:	push (stknext & stktop) */
@@ -986,6 +986,13 @@ InstructionDesc const tclInstructionTable[] = {
 	"uplevel",		-1),
 	/* Call the script in the given stack level, and stack the result.
 	 * Stack:  ... level script => ... result */
+    TCL_INSTRUCTION_ENTRY2(
+	"foreach_index", 9,	+1,	  OPERAND_UINT4, OPERAND_UINT4),
+	/* Get the step counter for the current iteration of foreach loop.
+	 * The stepIdx will be the index of the value of the opnd1'th variable
+	 * of the opnd0'th list of variables.
+	 * Stack: ... listObjs... iterTracker info =>
+	 *			... listObjs... iterTracker info stepIdx */
 
     {NULL, 0, 0, 0, {OPERAND_NONE}}
 };
@@ -1132,7 +1139,7 @@ TclSetByteCodeFromAny(
      * Make available to the compilation environment any data about invisible
      * continuation lines for the script.
      *
-     * It is not clear if the script Tcl_Obj* can be free'd while the compiler
+     * It is not clear if the script Tcl_Obj * can be free'd while the compiler
      * is using it, leading to the release of the associated ContLineLoc
      * structure as well. To ensure that the latter doesn't happen set a lock
      * on it, which is released in TclFreeCompileEnv().  The "lineCLPtr"
@@ -1549,7 +1556,7 @@ IsCompactibleCompileEnv(
  *	documentation for "subst".
  *
  * Results:
- *	A Tcl_Obj* containing the substituted string, or NULL to indicate that
+ *	A Tcl_Obj * containing the substituted string, or NULL to indicate that
  *	an error occurred.
  *
  * Side effects:

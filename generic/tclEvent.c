@@ -249,7 +249,7 @@ HandleBgErrors(
 	errPtr = assocPtr->firstBgPtr;
 
 	TclListObjGetElements(NULL, copyObj, &prefixObjc, &prefixObjv);
-	tempObjv = (Tcl_Obj**)Tcl_Alloc((prefixObjc+2) * sizeof(Tcl_Obj *));
+	tempObjv = (Tcl_Obj **)Tcl_Alloc((prefixObjc+2) * sizeof(Tcl_Obj *));
 	memcpy(tempObjv, prefixObjv, prefixObjc*sizeof(Tcl_Obj *));
 	tempObjv[prefixObjc] = errPtr->errorMsg;
 	tempObjv[prefixObjc+1] = errPtr->returnOpts;
@@ -333,7 +333,7 @@ TclDefaultBgErrorHandlerObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Obj *valuePtr;
     Tcl_Obj *tempObjv[2];
@@ -893,14 +893,14 @@ Tcl_SetExitProc(
  *
  * InvokeExitHandlers --
  *
- *      Call the registered exit handlers.
+ *	Call the registered exit handlers.
  *
  * Results:
  *	None.
  *
  * Side effects:
  *	The exit handlers are invoked, and the ExitHandler struct is
- *      freed.
+ *	freed.
  *
  *----------------------------------------------------------------------
  */
@@ -1126,7 +1126,7 @@ static const struct {
  * Wrapper to retrieve version+build to other modules.
  */
 const char *
-TclGetBuildInfo()
+TclGetBuildInfo(void)
 {
     return stubInfo.version;
 }
@@ -1146,8 +1146,7 @@ Tcl_InitSubsystems(void)
 
 	TclpInitLock();
 	if (!subsystemsInitialized) {
-
-		/*
+	    /*
 	     * Initialize locks used by the memory allocators before anything
 	     * interesting happens so we can use the allocators in the
 	     * implementation of self-initializing locks.
@@ -1348,11 +1347,18 @@ Tcl_Finalize(void)
     TclFinalizePreserve();
 
     /*
+     * Clear memory used for PostInit registrations. Call before shutting
+     * down synchronization objects and memory allocators.
+     */
+    Tcl_ClearPostInitProcs();
+
+    /*
      * Free synchronization objects. There really should only be one thread
      * alive at this moment.
      */
 
     TclFinalizeSynchronization();
+
 
     /*
      * Close down the thread-specific object allocator.
@@ -1531,7 +1537,7 @@ Tcl_VwaitObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Size i, done = 0, numItems = 0, timedOut = 0;
     int foundEvent, any = 1, timeout = 0;
@@ -1746,7 +1752,7 @@ Tcl_VwaitObjCmd(
 	vwaitItems[numItems].sourceObj = NULL;
 	timer = Tcl_CreateTimerHandler(timeout, VwaitTimeoutProc,
 		&vwaitItems[numItems]);
-	before = TclpGetMicroseconds();
+	before = Tcl_GetDayTime();
     } else {
 	timeout = 0;
     }
@@ -1821,7 +1827,7 @@ Tcl_VwaitObjCmd(
     if (timedOut) {
 	diff = -1;
     } else {
-	after = TclpGetMicroseconds();
+	after = Tcl_GetDayTime();
 	diff = after / 1000;
 	diff -= before / 1000;
 	diff = timeout - diff;
@@ -1987,7 +1993,7 @@ Tcl_UpdateObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     int flags = 0;		/* Initialized to avoid compiler warning. */
     static const char *const updateOptions[] = {"idletasks", NULL};

@@ -92,7 +92,7 @@ static int		GetNamespaceFromObj(Tcl_Interp *interp,
 			    Tcl_Obj *objPtr, Tcl_Namespace **nsPtrPtr);
 static int		InvokeImportedNRCmd(void *clientData,
 			    Tcl_Interp *interp, Tcl_Size objc,
-			    Tcl_Obj *const objv[]);
+			    Tcl_Obj *const *objv);
 static Tcl_ObjCmdProc2	NamespaceChildrenCmd;
 static Tcl_ObjCmdProc2	NamespaceCodeCmd;
 static Tcl_ObjCmdProc2	NamespaceCurrentCmd;
@@ -2110,7 +2110,7 @@ InvokeImportedNRCmd(
 				 * ImportedCmdData structure. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* The argument objects. */
+    Tcl_Obj *const *objv)	/* The argument objects. */
 {
     ImportedCmdData *dataPtr = (ImportedCmdData *) clientData;
     Command *realCmdPtr = dataPtr->realCmdPtr;
@@ -2125,7 +2125,7 @@ TclInvokeImportedCmd(
 				 * ImportedCmdData structure. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* The argument objects. */
+    Tcl_Obj *const *objv)	/* The argument objects. */
 {
     return Tcl_NRCallObjProc2(interp, InvokeImportedNRCmd, clientData,
 	    objc, objv);
@@ -2538,6 +2538,7 @@ TclEnsureNamespace(
     Tcl_Namespace *namespacePtr)
 {
     Namespace *nsPtr = (Namespace *) namespacePtr;
+
     if (!(nsPtr->flags & NS_DYING)) {
 	return namespacePtr;
     }
@@ -2545,9 +2546,9 @@ TclEnsureNamespace(
      * If a new namespace with the same name has been created already,
      * return that. Otherwise, create a new one. Bug 24d7f1a695.
      */
-    Tcl_Namespace *nsPtr2 = Tcl_FindNamespace(interp, nsPtr->fullName, NULL, 0);
-    if (nsPtr2 != NULL) {
-	return nsPtr2;
+    namespacePtr = Tcl_FindNamespace(interp, nsPtr->fullName, NULL, 0);
+    if (namespacePtr != NULL) {
+	return namespacePtr;
     }
     return Tcl_CreateNamespace(interp, nsPtr->fullName, NULL, NULL);
 }
@@ -3111,7 +3112,7 @@ NamespaceChildrenCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Namespace *namespacePtr;
     Namespace *nsPtr, *childNsPtr;
@@ -3229,7 +3230,7 @@ NamespaceCodeCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Obj *listPtr, *objPtr;
     const char *arg;
@@ -3304,7 +3305,7 @@ NamespaceCurrentCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     if (objc != 1) {
 	Tcl_WrongNumArgs(interp, 1, objv, NULL);
@@ -3363,7 +3364,7 @@ NamespaceDeleteCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Namespace *namespacePtr;
     const char *name;
@@ -3440,7 +3441,7 @@ NamespaceEvalCmd(
     void *clientData,		/* Arbitrary value passed to cmd. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     return Tcl_NRCallObjProc2(interp, NRNamespaceEvalCmd, clientData, objc,
 	    objv);
@@ -3451,7 +3452,7 @@ NRNamespaceEvalCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Interp *iPtr = (Interp *) interp;
     CmdFrame *invoker;
@@ -3583,7 +3584,7 @@ NamespaceExistsCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Namespace *namespacePtr;
 
@@ -3638,7 +3639,7 @@ NamespaceExportCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Size firstArg, i;
 
@@ -3720,7 +3721,7 @@ NamespaceForgetCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     const char *pattern;
     Tcl_Size i;
@@ -3786,7 +3787,7 @@ NamespaceImportCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     bool allowOverwrite = false;
     const char *string, *pattern;
@@ -3890,7 +3891,7 @@ NamespaceInscopeCmd(
     void *clientData,		/* Arbitrary value passed to cmd. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     return Tcl_NRCallObjProc2(interp, NRNamespaceInscopeCmd, clientData, objc,
 	    objv);
@@ -3901,7 +3902,7 @@ NRNamespaceInscopeCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Namespace *namespacePtr;
     CallFrame *framePtr, **framePtrPtr;
@@ -3988,7 +3989,7 @@ NamespaceOriginCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Command cmd, origCmd;
     Tcl_Obj *resultPtr;
@@ -4049,7 +4050,7 @@ NamespaceParentCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Namespace *nsPtr;
 
@@ -4106,7 +4107,7 @@ NamespacePathCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Namespace *nsPtr = (Namespace *) TclGetCurrentNamespace(interp);
     Tcl_Size nsObjc, i;
@@ -4333,7 +4334,7 @@ NamespaceQualifiersCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     const char *name, *p;
     size_t length;
@@ -4401,7 +4402,7 @@ NamespaceUnknownCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Namespace *currNsPtr;
     Tcl_Obj *resultPtr;
@@ -4588,7 +4589,7 @@ NamespaceTailCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     const char *name, *p;
 
@@ -4646,7 +4647,7 @@ NamespaceUpvarCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Interp *iPtr = (Interp *) interp;
     Tcl_Namespace *nsPtr, *savedNsPtr;
@@ -4720,7 +4721,7 @@ NamespaceWhichCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     static const char *const opts[] = {
 	"-command", "-variable", NULL

@@ -214,7 +214,7 @@ ThreadObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     ThreadSpecificData *tsdPtr = TCL_TSD_INIT(&dataKey);
     static const char *const threadOptions[] = {
@@ -524,7 +524,7 @@ ThreadCreate(
      * Wait for the thread to start because it is using something on our stack!
      */
 
-    Tcl_ConditionWait(&ctrl.condWait, &threadMutex, NULL);
+    Tcl_ConditionWait2(&ctrl.condWait, &threadMutex, -1);
     Tcl_MutexUnlock(&threadMutex);
     Tcl_ConditionFinalize(&ctrl.condWait);
     Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)(size_t)id));
@@ -755,13 +755,13 @@ ListRemove(
  *
  * ThreadList --
  *
- *    Return a list of threads running Tcl interpreters.
+ *	Return a list of threads running Tcl interpreters.
  *
  * Results:
- *    A standard Tcl result.
+ *	A standard Tcl result.
  *
  * Side effects:
- *    None.
+ *	None.
  *
  *------------------------------------------------------------------------
  */
@@ -788,13 +788,13 @@ ThreadList(
  *
  * ThreadSend --
  *
- *    Send a script to another thread.
+ *	Send a script to another thread.
  *
  * Results:
- *    A standard Tcl result.
+ *	A standard Tcl result.
  *
  * Side effects:
- *    None.
+ *	None.
  *
  *------------------------------------------------------------------------
  */
@@ -897,7 +897,7 @@ ThreadSend(
 
     Tcl_ResetResult(interp);
     while (resultPtr->result == NULL) {
-	Tcl_ConditionWait(&resultPtr->done, &threadMutex, NULL);
+	Tcl_ConditionWait2(&resultPtr->done, &threadMutex, -1);
     }
 
     /*
@@ -943,13 +943,13 @@ ThreadSend(
  *
  * ThreadCancel --
  *
- *    Cancels a script in another thread.
+ *	Cancels a script in another thread.
  *
  * Results:
- *    A standard Tcl result.
+ *	A standard Tcl result.
  *
  * Side effects:
- *    None.
+ *	None.
  *
  *------------------------------------------------------------------------
  */
@@ -999,13 +999,13 @@ ThreadCancel(
  *
  * ThreadEventProc --
  *
- *    Handle the event in the target thread.
+ *	Handle the event in the target thread.
  *
  * Results:
- *    Returns 1 to indicate that the event was processed.
+ *	Returns 1 to indicate that the event was processed.
  *
  * Side effects:
- *    Fills out the ThreadEventResult struct.
+ *	Fills out the ThreadEventResult struct.
  *
  *------------------------------------------------------------------------
  */
@@ -1069,11 +1069,11 @@ ThreadEventProc(
  *
  * ThreadFreeProc --
  *
- *    This is called from when we are exiting and memory needs
- *    to be freed.
+ *	This is called from when we are exiting and memory needs
+ *	to be freed.
  *
  * Results:
- *    None.
+ *	None.
  *
  * Side effects:
  *	Clears up mem specified in clientData
@@ -1095,11 +1095,11 @@ ThreadFreeProc(
  *
  * ThreadDeleteEvent --
  *
- *    This is called from the ThreadExitProc to delete memory related
- *    to events that we put on the queue.
+ *	This is called from the ThreadExitProc to delete memory related
+ *	to events that we put on the queue.
  *
  * Results:
- *    1 it was our event and we want it removed, 0 otherwise.
+ *	1 it was our event and we want it removed, 0 otherwise.
  *
  * Side effects:
  *	It cleans up our events in the event queue for this thread.
@@ -1122,7 +1122,7 @@ ThreadDeleteEvent(
      * should be removed
      */
 
-    return (eventPtr->proc == NULL);
+    return eventPtr->proc == NULL;
 }
 
 /*
@@ -1130,10 +1130,10 @@ ThreadDeleteEvent(
  *
  * ThreadExitProc --
  *
- *    This is called when the thread exits.
+ *	This is called when the thread exits.
  *
  * Results:
- *    None.
+ *	None.
  *
  * Side effects:
  *	It unblocks anyone that is waiting on a send to this thread. It cleans

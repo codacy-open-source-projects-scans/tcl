@@ -20,24 +20,23 @@ namespace eval ::tcl::test::fileSystem {
 	file delete -force link.file dir.link
 	file delete -force dir.link
 	file delete -force [file join dir.dir linkinside.file]
-        file delete -force MixedCaseLink.File MixedCaseLink.Dir
+	file delete -force MixedCaseLink.File MixedCaseLink.Dir
     }
 
     # notWSL constraint is true when running under native Windows or
     # native Unix.
     testConstraint notWSL \
-        [expr {
-            $::tcl_platform(platform) eq "windows"
-            || [llength [array names ::env *WSL*]] == 0
-        }]
+	[expr {
+	    $::tcl_platform(platform) eq "windows"
+	    || [llength [array names ::env *WSL*]] == 0
+	}]
 
 testConstraint loaddll 0
 catch {
     ::tcltest::loadTestedCommands
     package require -exact tcl::test [info patchlevel]
-    set ::ddever [package require dde]
+    package require dde
     set ::ddelib [info loaded {} Dde]
-    set ::regver  [package require registry]
     set ::reglib [info loaded {} Registry]
     testConstraint loaddll [expr {$::ddelib ne "" && $::reglib ne ""}]
 }
@@ -51,7 +50,7 @@ testConstraint testsimplefilesystem [llength [info commands ::testsimplefilesyst
 testConstraint notInCIenv           [expr {![info exists ::env(CI)]}]
 
 variable caseSensitiveFS [expr {
-    $::tcl_platform(os) ne "Darwin" && $::tcl_platform(platform) ne "windows"
+    $::tcl_platform(os) ne "Darwin" && $::tcl_platform(os) ne "Windows NT"
 }]
 testConstraint caseSensitiveFS $caseSensitiveFS
 
@@ -82,12 +81,11 @@ apply {{} {
 
 	set dir [pwd]
 	try {
-	    set drives [lmap vol [file volumes] {
-		if {$vol eq [zipfs root] || [catch {cd $vol}]} {
-		    continue
-		}
-		set vol
-	    }]
+	    foreach vol [file volumes] {
+		if {$vol eq [zipfs root] || [catch {cd $vol}]} continue
+		lappend drives $vol
+		if {[llength $drives] > 1} break; # lets stop on 2nd drive
+	    }
 	    testConstraint moreThanOneDrive [expr {[llength $drives] > 1}]
 	} finally {
 	    cd $dir
@@ -124,7 +122,7 @@ if {$dirInRoot ne ""} {
     testConstraint hasDirInRoot 1
     variable casedDirInRoot [string toupper $dirInRoot]
     if {$casedDirInRoot eq $dirInRoot} {
-        set casedDirInRoot [string tolower $dirInRoot]
+	set casedDirInRoot [string tolower $dirInRoot]
     }
 } else {
     testConstraint hasDirInRoot 0
@@ -136,7 +134,7 @@ if {[testConstraint hasLinks] && $linkInRoot ne ""} {
     variable linkInRootTarget [file link $linkInRoot]
     variable casedLinkInRoot [string toupper $linkInRoot]
     if {$casedLinkInRoot eq $linkInRoot} {
-        set casedLinkInRoot [string tolower $linkInRoot]
+	set casedLinkInRoot [string tolower $linkInRoot]
     }
 } else {
     testConstraint hasLinkInRoot 0
@@ -374,14 +372,17 @@ test filesystem-1.37 {file normalisation with '/./'} -body {
 test filesystem-1.38 {file normalisation with volume relative} -setup {
     set dir [pwd]
 } -constraints {win moreThanOneDrive notInCIenv} -body {
+    # if current dir is on 1st drive:
     if {[string index $dir 0] eq [string index [lindex $drives 0] 0]} {
+	# path to 1st drive, cd 2nd drive:
         set path "[string range [lindex $drives 0] 0 1]foo"
-        cd [lindex $drives 1]
-	} else {
-        set path "[string range [lindex $drives 1] 0 1]foo"
-        cd [lindex $drives 0]
-	}
-    set path "[string range [lindex $drives 0] 0 1]foo"
+	cd [lindex $drives 1]
+    } else {
+        # path to current drive, cd 1st drive (not current), thereby don't use
+        # 2nd drive in path, since current dir may be neither 1st nor 2nd drive:
+	set path "[string range $dir 0 1]foo"
+	cd [lindex $drives 0]
+    }
     string equal [file norm $path] [file join $dir foo]
 } -cleanup {
     cd $dir
@@ -1069,10 +1070,10 @@ test filesystem-11.1 {
     Bug 10890417 - case of tail is correct after normalization
 } -constraints notWSL -body {
     lmap file1 [glob $tempDir/mixedcase.file \
-                    $tempDir/MIXEDCASE.FILE \
-                    $tempDir/MixedCase.File \
-                   ] {
-       file normalize $file1
+	$tempDir/MIXEDCASE.FILE \
+	$tempDir/MixedCase.File \
+    ] {
+	file normalize $file1
     }
 } -result [expr {
     $caseSensitiveFS
@@ -1084,8 +1085,8 @@ test filesystem-11.2 {
     Bug 10890417 - case of tail is correct after normalization (-directory)
 } -constraints notWSL -body {
     lmap file1 [glob -directory $tempDir \
-                    mixedcase.file MIXEDCASE.FILE MixedCase.File ] {
-       file normalize $file1
+	    mixedcase.file MIXEDCASE.FILE MixedCase.File ] {
+	file normalize $file1
     }
 } -result [expr {
     $caseSensitiveFS
@@ -1097,10 +1098,10 @@ test filesystem-11.3 {
     Bug 10890417 - case of dir is correct after normalization
 } -constraints notWSL -body {
     lmap file1 [glob \
-                    $tempDir/mixedcase.dir/inside.file \
-                    $tempDir/MIXEDCASE.DIR/INSIDE.FILE \
-                    $tempDir/MixedCase.Dir/Inside.File] {
-        file tail [file dirname [file normalize $file1]]
+	    $tempDir/mixedcase.dir/inside.file \
+	    $tempDir/MIXEDCASE.DIR/INSIDE.FILE \
+	    $tempDir/MixedCase.Dir/Inside.File] {
+	file tail [file dirname [file normalize $file1]]
     }
 } -result [expr {
     $caseSensitiveFS ?  [list MixedCase.Dir] :[lrepeat 3 MixedCase.Dir]
@@ -1110,10 +1111,10 @@ test filesystem-11.4 {
     Bug 10890417 - case of dir is correct after normalization (-directory)
 } -constraints notWSL -body {
     lmap file1 [concat \
-                    [glob -dir $tempDir/mixedcase.dir inside.file] \
-                    [glob -dir $tempDir/MIXEDCASE.DIR INSIDE.FILE] \
-                    [glob -dir $tempDir/MixedCase.Dir Inside.File]] {
-        file tail [file dirname [file normalize $file1]]
+	    [glob -dir $tempDir/mixedcase.dir inside.file] \
+	    [glob -dir $tempDir/MIXEDCASE.DIR INSIDE.FILE] \
+	    [glob -dir $tempDir/MixedCase.Dir Inside.File]] {
+	file tail [file dirname [file normalize $file1]]
     }
 } -result [expr {
     $caseSensitiveFS ?  [list MixedCase.Dir] :[lrepeat 3 MixedCase.Dir]
@@ -1151,14 +1152,14 @@ test filesystem-12.1 {
 proc makeStringRep path {
     set path [string range $path 0 end]
     if {[regexp {value is a path} [tcl::unsupported::representation $path]]} {
-        error "Could not flush internal representation of path"
+	error "Could not flush internal representation of path"
     }
     return $path
 }
 proc makePathRep path {
     file exists $path
     if {![regexp {value is a path} [tcl::unsupported::representation $path]]} {
-        error "Could not generate internal representation of path"
+	error "Could not generate internal representation of path"
     }
     return $path
 }
@@ -1166,25 +1167,25 @@ proc makePathRep path {
 proc testcasenormalize {id comment path actualPath args} {
     variable caseSensitiveFS
     if {$actualPath eq ""} {
-        # Path does not actually exist. Normalize should return original
-        set actualPath $path
+	# Path does not actually exist. Normalize should return original
+	set actualPath $path
     }
     # Test the actual path is correctly normalized
     test $id.0 $comment -body {
-        list \
-            [file normalize [makeStringRep $actualPath]] \
-            [file normalize [makePathRep $actualPath]]
+	list \
+	    [file normalize [makeStringRep $actualPath]] \
+	    [file normalize [makePathRep $actualPath]]
     } -result [list $actualPath $actualPath] {*}$args
 
     # Test the path with changed case is correctly normalized
     test $id.1 $comment -body {
-        list \
-            [file normalize [makeStringRep $path]] \
-            [file normalize [makePathRep $path]]
+	list \
+	    [file normalize [makeStringRep $path]] \
+	    [file normalize [makePathRep $path]]
     } -result [expr {
-        $caseSensitiveFS
-        ? [list $path $path]
-        : [list $actualPath $actualPath]
+	$caseSensitiveFS
+	? [list $path $path]
+	: [list $actualPath $actualPath]
     }] {*}$args
 }
 
@@ -1257,14 +1258,19 @@ test filesystem-13.12 {
     Normalize relative directory
 } -body {
     list [file normalize MixedCase.Dir/Inside.File] \
-        [file normalize mixedcase.dir/inside.file]
+	    [file normalize mixedcase.dir/inside.file]
 } -result [list $tempDir/MixedCase.Dir/Inside.File [expr {
     $caseSensitiveFS
     ? "$tempDir/mixedcase.dir/inside.file"
     : "$tempDir/MixedCase.Dir/Inside.File"
 }]]
 
-file delete -force MixedCaseLink.Dir MixedCaseLink.File
+catch {
+	file delete -force MixedCaseLink.File MixedCaseLink.Dir
+}
+removeFile [file join MixedCase.Dir Inside.File]
+removeDirectory MixedCase.Dir
+removeFile MixedCase.File
 
 cleanupTests
 unset -nocomplain drive drives

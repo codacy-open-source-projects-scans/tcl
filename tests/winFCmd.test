@@ -23,6 +23,7 @@ catch [list package require -exact tcl::test [info patchlevel]]
 testConstraint testvolumetype [llength [info commands testvolumetype]]
 testConstraint testfile       [llength [info commands testfile]]
 testConstraint testchmod      [llength [info commands testchmod]]
+testConstraint testfilesddl   [llength [info commands testfilesddl]]
 testConstraint cdrom 0
 testConstraint exdev 0
 testConstraint longFileNames 0
@@ -30,6 +31,12 @@ testConstraint longFileNames 0
 # such as CI often running with elevated privileges in a container.
 testConstraint notInCIenv     [expr {![info exists ::env(CI)]}]
 testConstraint knownMsvcBug [expr {[tcl::build-info msvc] eq 0}]
+
+# If in a CI environment, file system changes are ephemeral anyways so
+# always set allowfilesecuritychanges constraint
+if {![testConstraint notInCIenv]} {
+    testConstraint allowfilesecuritychanges 1
+}
 
 # Long path support (not to be confused with long name support!) depends on
 # the system being recent enough AND configured for long paths in the registry.
@@ -42,8 +49,7 @@ if {![catch {exec {*}[auto_execok cmd.exe] /c ver} winVer]} {
 		testConstraint longPathAware [testlongpathsetting]
 	    } else {
 		catch {
-		    package require registry
-		    testConstraint longPathAware [registry get "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" LongPathsEnabled]
+		    testConstraint longPathAware [tcl::registry get "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" LongPathsEnabled]
 		}
 	    }
 	}
@@ -97,10 +103,57 @@ proc findfile {dir} {
     return ""
 }
 
+proc parseSddl {sddl} {
+    # Parse an SDDL, returning a dictionary with keys owner, group,
+    # dacl and sacl. If any component is not present in the SDDL, the
+    # dictionary omits the corresponding key. Note a component may be
+    # present but empty in which case the dictionary key is present with
+    # an empty string as its value
+    # SDDL syntax:
+    # O: owner SID
+    # G: group SID
+    # D: DACL - optional control flags, followed by parenthesized ACE list
+    # S: SACL - ditto
+    set sddlRe {(?x)
+	^
+	(?: (O:) ( [A-Za-z0-9-]+? ) (?=G:|D:|S:|$) )?
+	(?: (G:) ( [A-Za-z0-9-]+? ) (?=D:|S:|$)    )?
+	(?: (D:) ((?: [A-Z]+ )? (?: \( [^)]* \) )*))?
+	(?: (S:) ((?: [A-Z]+ )? (?: \( [^)]* \) )*))?
+	$
+    }
+    if {![regexp $sddlRe $sddl -> ownerTag owner groupTag group daclTag dacl saclTag sacl]} {
+	error "Could not parse SDDL \"$sddl\""
+    }
+    set result [dict create]
+    foreach field {owner group dacl sacl} {
+	if {[set ${field}Tag] ne ""} {
+	    dict set result $field [set $field]
+	}
+    }
+    return $result
+}
+
+proc parseSddlAcl {acl} {
+    # Parse a SDDL ACL component consisting of optional leading flags
+    # (upper case letters) followed by optional joined parenthisized expressions
+    # Returns a pair consisting of the flags and a list of ACE SDDL strings
+    regexp {^([A-Z]*)} $acl -> flags
+    set aces [regexp -all -inline {\((?:[^)]*)\)} $acl]
+    return [list $flags $aces]
+}
+
 if {[testConstraint testvolumetype]} {
-    foreach p {d e f g h i j k l m n o p q r s t u v w x y z} {
-	if {![catch {testvolumetype ${p}:} result] && $result in {CDFS UDF}} {
-	    set cdrom ${p}:
+    foreach p [file volumes] {
+	# normally don't test after error - the volumes behind are either not accessible too,
+	# or the user missed permissions to get drive info from scratch (even for such like C:),
+	# because otherwise it may be extremely slow if there are some temporary unavailable network drives:
+	if {[catch {testvolumetype $p} result]} {
+	    if {![testConstraint extensive]} break
+	    continue
+	}
+	if {$result in {CDFS UDF}} {
+	    set cdrom [regsub {/?$} $p {}]
 	    set cdfile [findfile $cdrom]
 	    testConstraint cdrom 1
 	    break
@@ -1222,11 +1275,15 @@ test winFCmd-16.8 {Windows file normalization} -constraints {win} -body {
 test winFCmd-16.9 {Windows file normalization} -constraints {win} -body {
     file norm /bar/foo
 } -result "${d}:/bar/foo"
-if {$d eq "C"} { set dd "D" } else { set dd "C" }
 test winFCmd-16.10 {Windows file normalization} -constraints {
-    win notInCIenv
+    win notInCIenv nonPortable
 } -setup {
-    cd ${dd}:
+    apply {d {
+	# Try to find a native volume that isn't the current one.
+	# NB: This can still fail; it's a proper wild west out there.
+	if {$d eq "C"} { set dd "D" } else { set dd "C" }
+	cd ${dd}:
+    }} $d
 } -cleanup {
     cd $pwd
 } -body {
@@ -1292,6 +1349,53 @@ test winFCmd-16.15 {Windows file normalization - invalid drive} -setup {
     string equal [file norm ${baddrive}:foo] ${baddrive}:/foo
 } -result 1
 
+# Following test only run under constraint allowfilesecuritychanges to
+# protect against consequences from bugs that clobber permissions. Bitter
+# experience - write-protected my entire work tree and wondered why compiles
+# failed.
+proc test_bug_d40d8db3 {id comment subdir} {
+    set testScript {
+	test @ID@ {
+	    @COMMENT@
+	} -constraints {
+	    win testchmod testfilesddl allowfilesecuritychanges
+	} -setup {
+	    set dir [tcltest::makeDirectory @ID@]
+	    if {[file exists $dir]} {
+		testchmod 0o777 $dir
+		file delete -force $dir
+		if {[file exists $dir]} {
+		    error "Could not delete $dir"
+		}
+	    }
+	    set aclTarget [file join $dir @SUBDIR@]
+	    set path [file join $aclTarget tail]
+	    file mkdir $path
+	    set secd [parseSddl [testfilesddl $aclTarget]]
+	    set dacl [dict getdef $secd dacl ""]
+	    lassign [parseSddlAcl [dict getdef $secd dacl ""]] aclFlags aces
+	    ledit aces 0 -1 "(D;;0x1;;;[dict get $secd owner])"
+	    set sddl "D:$aclFlags[join $aces {}]"
+	    testfilesddl $aclTarget $sddl
+	} -cleanup {
+	    testchmod 0o777 $path
+	    testchmod 0o777 $aclTarget
+	    testchmod 0o777 $dir
+	    file delete -force $dir
+	    unset -nocomplain dir path secd dacl aclFlags aces sddl
+	} -body {
+	    file normalize $path
+	} -result [file join [tcltest::temporaryDirectory] @ID@ @SUBDIR@ tail]
+    }
+    uplevel 1 [string map [list @ID@ $id @COMMENT@ $comment @SUBDIR@ $subdir] $testScript]
+}
+test_bug_d40d8db3 winFCmd-16.25.1 {
+    Windows file normalization - Bug d40d8db3 - denied dir read
+} middledir
+test_bug_d40d8db3 winFCmd-16.25.2 {
+    Windows file normalization - Bug d40d8db3 - denied dir read (unicode)
+} \xe9\u4E4E
+
 test winFCmd-17.1 {Windows bad permissions cd} -constraints win -body {
     set d {}
     foreach dd {c:/ d:/ e:/} {
@@ -1311,7 +1415,7 @@ test winFCmd-17.1 {Windows bad permissions cd} -constraints win -body {
 } -result "permission denied"
 
 cd $pwd
-unset d dd pwd
+unset d pwd
 
 test winFCmd-18.1 {Windows reserved path names} -constraints win -body {
     file pathtype com1
@@ -1439,16 +1543,16 @@ testConstraint haveTwoDrives 0
 if {$::tcl_platform(platform) eq "windows"} {
     set drive [string toupper [lindex [file split [pwd]] 0]]
     foreach otherDrive [file volumes] {
-        if {$otherDrive ne $drive
-            && [lindex [file system $otherDrive] 0] eq "native"} {
-            testConstraint haveTwoDrives 1
-            # Do not use file join here. We need a string literal
-            # for the bug, not one with an internal file system rep
-            set pathInOther [string cat \
-                                    ${otherDrive} \
-                                    [lindex [glob -directory $otherDrive -tails *] 0]]
-            break
-        }
+	if {$otherDrive ne $drive
+	    && [lindex [file system $otherDrive] 0] eq "native"} {
+	    testConstraint haveTwoDrives 1
+	    # Do not use file join here. We need a string literal
+	    # for the bug, not one with an internal file system rep
+	    set pathInOther [string cat \
+		      ${otherDrive} \
+		      [lindex [glob -directory $otherDrive -tails *] 0]]
+	    break
+	}
     }
 }
 
@@ -1461,7 +1565,6 @@ test winFCmd-20.1 {
 test winFCmd-20.2 {
     Bug b0682c3c24 - absolute paths in pattern (-directory)
 } -constraints haveTwoDrives -body {
-    puts $pathInOther
     glob -directory $pathInOther $pathInOther
 } -result {}
 
@@ -1531,7 +1634,7 @@ namespace eval testlongpaths {
 	file join $longPathRoot [join $longPathComponents \\] $pathTail
     } -result $longPathFile
 
-    testlongpath file-join-longpath-0 "deep path file join - relative" {
+    testlongpath file-join-longpath-2 "deep path file join - relative" {
 	file join {*}$deepPathComponents
     } -result [join $deepPathComponents /]
 
@@ -1669,7 +1772,7 @@ namespace eval testlongpaths {
 	ops $deepPathDir dir
     } -result $dirOpsResult
 
-    testlongpath dirops-longpath-2 "Long path directory operations - dot, dotdot" {
+    testlongpath dirops-longpath-3 "Long path directory operations - dot, dotdot" {
 	ops $longPathDir/.././$longPathComponent dir
     } -result $dirOpsResult
 
@@ -1729,7 +1832,7 @@ namespace eval testlongpaths {
 	ops $deepPathFile file
     } -result $fileOpsResult
 
-    testlongpath fileops-longpath-2 "Long path file operations - dot, dotdot" {
+    testlongpath fileops-longpath-3 "Long path file operations - dot, dotdot" {
 	ops $longPathDir/.././$longPathComponent/$pathTail file
     } -result $fileOpsResult
 
@@ -1888,12 +1991,12 @@ namespace delete testlongpaths
 testConstraint testwinerror [llength [info commands testwinerror]]
 namespace eval testwinerror {
     if {[testConstraint testwinerror]} {
-        catch {
-            variable regOut [exec {*}[auto_execok reg] query {HKCU\Control Panel\International} /v LocaleName]
-            if {[regexp -nocase {en-US} $regOut]} {
-                testConstraint englishLocale 1
-            }
-        }
+	catch {
+	    variable regOut [exec {*}[auto_execok reg] query {HKCU\Control Panel\International} /v LocaleName]
+	    if {[regexp -nocase {en-US} $regOut]} {
+	 testConstraint englishLocale 1
+	    }
+	}
     }
     variable pdhErrorCode 0x800007D0
     proc test args {
@@ -1975,36 +2078,6 @@ namespace eval testwinerror {
 
 }
 namespace delete testwinerror
-
-
-################################################################
-
-# This block of code used to occur after the "return" call, so I'm
-# commenting it out and assuming that this code is still under construction.
-#foreach source {tef ted tnf tnd "" nul com1} {
-#    foreach chmodsrc {000 755} {
-#        foreach dest "tfn tfe tdn tdempty tdfull td1/td2 $p $p/td1 {} nul" {
-#	    foreach chmoddst {000 755} {
-#		puts hi
-#		cleanup
-#		file delete -force ted tef
-#		file mkdir ted
-#		createfile tef
-#		createfile tfe
-#		file mkdir tdempty
-#		file mkdir tdfull/td1/td2
-#
-#		catch {testchmod $chmodsrc $source}
-#		catch {testchmod $chmoddst $dest}
-#
-#		if [catch {file rename $source $dest} msg] {
-#		    puts "file rename $source ($chmodsrc) $dest ($chmoddst)"
-#		    puts $msg
-#		}
-#	    }
-#	}
-#    }
-#}
 
 cleanup
 ::tcltest::cleanupTests

@@ -71,32 +71,64 @@ FinalizeConstruction(
 }
 
 /*
- * ----------------------------------------------------------------------
+ *----------------------------------------------------------------------
  *
- * MixinClassDelegates --
+ * TclOOGetClassDelegateName --
  *
- *	Internal utility for setting up the class delegate.
- *	Runs after the class has called [oo::define] on its argument.
+ *	Get the name of the delegate for a class. Callers need to handle
+ *	reference counts for their uses; this is a cached value. May be
+ *	called prior to the creation of the delegate.
  *
- * ----------------------------------------------------------------------
+ *----------------------------------------------------------------------
  */
+Tcl_Obj *
+TclOOGetClassDelegateName(
+    Object *oPtr)		// Object handle for a class.
+{
+    if (!oPtr->classPtr) {
+	Tcl_Panic("getting delegate for non-class");
+    }
 
-// Look up the delegate for a class.
+    Tcl_Obj *nameObj = oPtr->classPtr->delegateNameObj;
+    if (!nameObj) {
+	nameObj = Tcl_ObjPrintf("%s:: oo ::delegate",
+		oPtr->namespacePtr->fullName);
+	oPtr->classPtr->delegateNameObj = nameObj;
+	Tcl_IncrRefCount(nameObj);
+    }
+    return nameObj;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * GetClassDelegate --
+ *
+ *	Look up the delegate for a class.
+ *
+ *----------------------------------------------------------------------
+ */
 static inline Class *
 GetClassDelegate(
     Tcl_Interp *interp,
     Class *clsPtr)
 {
-    Tcl_Obj *delegateName = Tcl_ObjPrintf("%s:: oo ::delegate",
-	    clsPtr->thisPtr->namespacePtr->fullName);
+    Tcl_Obj *delegateName = TclOOGetClassDelegateName(clsPtr->thisPtr);
     Class *delegatePtr = TclOOGetClassFromObj(interp, delegateName);
-    Tcl_DecrRefCount(delegateName);
+    Tcl_BounceRefCount(delegateName);
     return delegatePtr;
 }
 
 /*
- * Patches in the appropriate class delegates' superclasses.
- * Somewhat messy because the list of superclasses isn't modified frequently.
+ *----------------------------------------------------------------------
+ *
+ * SetDelegateSuperclasses --
+ *
+ *	Patches in the appropriate class delegates' superclasses.
+ *	Somewhat messy because the list of superclasses isn't modified
+ *	frequently.
+ *
+ *----------------------------------------------------------------------
  */
 static inline void
 SetDelegateSuperclasses(
@@ -140,7 +172,13 @@ SetDelegateSuperclasses(
 }
 
 /*
- * Mixes the delegate into its controlling class.
+ *----------------------------------------------------------------------
+ *
+ * InstallDelegateAsMixin --
+ *
+ *	Mixes the delegate into its controlling class.
+ *
+ *----------------------------------------------------------------------
  */
 static inline void
 InstallDelegateAsMixin(
@@ -166,7 +204,16 @@ InstallDelegateAsMixin(
     TclStackFree(interp, mixins);
 }
 
-// Patches in the appropriate class delegates.
+/*
+ * ----------------------------------------------------------------------
+ *
+ * MixinClassDelegates --
+ *
+ *	Internal utility for patching the class delegate in where it belongs.
+ *	Runs after the class has called [oo::define] on its argument.
+ *
+ * ----------------------------------------------------------------------
+ */
 static void
 MixinClassDelegates(
     Tcl_Interp *interp,
@@ -217,8 +264,7 @@ TclOO_Class_Constructor(
      * argument to [oo::define]. [Bug 680503]
      */
 
-    Tcl_Obj *delegateName = Tcl_ObjPrintf("%s:: oo ::delegate",
-	    oPtr->namespacePtr->fullName);
+    Tcl_Obj *delegateName = TclOOGetClassDelegateName(oPtr);
     Tcl_IncrRefCount(delegateName);
     Tcl_NewObjectInstance(interp, (Tcl_Class) oPtr->fPtr->classCls,
 	    TclGetString(delegateName), NULL, TCL_INDEX_NONE, NULL, 0);
@@ -263,8 +309,14 @@ TclOO_Class_Constructor(
 }
 
 /*
- * Called *after* [oo::define] inside the constructor of a class.
- * Cleans up some temporary storage and sets up the delegate.
+ *----------------------------------------------------------------------
+ *
+ * PostClassConstructor --
+ *
+ *	Called *after* [oo::define] inside the constructor of a class.
+ *	Cleans up some temporary storage and sets up the delegate.
+ *
+ *----------------------------------------------------------------------
  */
 static int
 PostClassConstructor(
@@ -287,6 +339,21 @@ PostClassConstructor(
     return Tcl_RestoreInterpState(interp, saved);
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * ContextClass --
+ *
+ *	Get the context object (see Tcl_ObjectContextObject) as a class.
+ *	Should only be called inside a class method implementation, where
+ *	the context object must exist.
+ *
+ * Returns:
+ *	The context class, if it is a valid class. Otherwise NULL (with an
+ *	error message in the interpreter).
+ *
+ *----------------------------------------------------------------------
+ */
 static inline Tcl_Class
 ContextClass(
     Tcl_Interp *interp,		/* Interpreter used for error reporting. */
@@ -527,8 +594,7 @@ UpdateClassDelegatesAfterClone(
     if (result == TCL_OK && originPtr->classPtr && targetPtr->classPtr) {
 	// Get the originating delegate to be cloned.
 
-	Tcl_Obj *originName = Tcl_ObjPrintf("%s:: oo ::delegate",
-		originPtr->namespacePtr->fullName);
+	Tcl_Obj *originName = TclOOGetClassDelegateName(originPtr);
 	Object *originDelegate = (Object *) Tcl_GetObjectFromObj(interp,
 		originName);
 	Tcl_BounceRefCount(originName);
@@ -540,8 +606,7 @@ UpdateClassDelegatesAfterClone(
 
 	// Create the cloned target delegate.
 
-	Tcl_Obj *targetName = Tcl_ObjPrintf("%s:: oo ::delegate",
-		targetPtr->namespacePtr->fullName);
+	Tcl_Obj *targetName = TclOOGetClassDelegateName(targetPtr);
 	Object *targetDelegate = (Object *) Tcl_CopyObjectInstance(interp,
 		(Tcl_Object) originDelegate, Tcl_GetString(targetName), NULL);
 	Tcl_BounceRefCount(targetName);
@@ -572,7 +637,7 @@ UpdateClassDelegatesAfterClone(
     TclOODecrRefCount(originPtr);
     TclOODecrRefCount(targetPtr);
     return result;
-};
+}
 
 /*
  * ----------------------------------------------------------------------
@@ -1058,7 +1123,10 @@ TclOOLookupObjectVar(
     if (arg[0] == ':' && arg[1] == ':') {
 	varNamePtr = varName;
     } else {
-	Tcl_Namespace *namespacePtr = Tcl_GetObjectNamespace(object);
+	Tcl_DString ds;
+	Tcl_DStringInit(&ds);
+	Tcl_DStringAppend(&ds, 	Tcl_GetObjectNamespace(object)->fullName, -1);
+	Tcl_DStringAppend(&ds, "::", 2);
 	CallFrame *framePtr = ((Interp *) interp)->varFramePtr;
 
 	/*
@@ -1113,8 +1181,8 @@ TclOOLookupObjectVar(
 	}
 
 	// The namespace isn't the global one; necessarily true for any object!
-	varNamePtr = Tcl_ObjPrintf("%s::%s",
-		namespacePtr->fullName, TclGetString(varName));
+	TclDStringAppendObj(&ds, varName);
+	varNamePtr = Tcl_DStringToObj(&ds);
     }
     Tcl_IncrRefCount(varNamePtr);
     Tcl_Var var = (Tcl_Var) TclObjLookupVar(interp, varNamePtr, NULL,
@@ -1262,10 +1330,15 @@ TclOOLinkObjCmd(
 	}
 
 	// Qualify the source if necessary
-	const char *srcStr = TclGetString(src);
+	Tcl_Size srcLen;
+	const char *srcStr = TclGetStringFromObj(src, &srcLen);
 	if (srcStr[0] != ':' || srcStr[1] != ':') {
-	    src = Tcl_ObjPrintf("%s::%s",
-		    context->oPtr->namespacePtr->fullName, srcStr);
+	    Tcl_DString ds;
+	    Tcl_DStringInit(&ds);
+	    Tcl_DStringAppend(&ds, context->oPtr->namespacePtr->fullName, -1);
+	    TclDStringAppendLiteral(&ds, "::");
+	    Tcl_DStringAppend(&ds, srcStr, srcLen);
+	    src = Tcl_DStringToObj(&ds);
 	}
 
 	// Make the alias command
@@ -1891,8 +1964,7 @@ TclOODelegateNameObjCmd(
     if (clsPtr == NULL) {
 	return TCL_ERROR;
     }
-    Tcl_SetObjResult(interp, Tcl_ObjPrintf("%s:: oo ::delegate",
-	    clsPtr->thisPtr->namespacePtr->fullName));
+    Tcl_SetObjResult(interp, TclOOGetClassDelegateName(clsPtr->thisPtr));
     return TCL_OK;
 }
 
@@ -1940,10 +2012,8 @@ MarkAsSingleton(
     Class *clsPtr = (Class *) data[0];
     if (result == TCL_OK && clsPtr->instances.num) {
 	// Prepend oo::SingletonInstance to the list of mixins
-	Tcl_Obj *singletonInstanceName = Tcl_NewStringObj(
-		"::oo::SingletonInstance", TCL_AUTO_LENGTH);
-	Class *singInst = TclOOGetClassFromObj(interp, singletonInstanceName);
-	Tcl_BounceRefCount(singletonInstanceName);
+	Class *singInst = TclOOGetClassFromObj(interp,
+		clsPtr->thisPtr->fPtr->singletonInstName);
 	if (!singInst) {
 	    return TCL_ERROR;
 	}

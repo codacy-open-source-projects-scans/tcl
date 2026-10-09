@@ -4,11 +4,11 @@
  *	This header file describes the externally-visible facilities of the
  *	Tcl interpreter.
  *
- * Copyright (c) 1987-1994 The Regents of the University of California.
- * Copyright (c) 1993-1996 Lucent Technologies.
- * Copyright (c) 1994-1998 Sun Microsystems, Inc.
- * Copyright (c) 1998-2000 by Scriptics Corporation.
- * Copyright (c) 2002 by Kevin B. Kenny.  All rights reserved.
+ * Copyright © 1987-1994 The Regents of the University of California.
+ * Copyright © 1993-1996 Lucent Technologies.
+ * Copyright © 1994-1998 Sun Microsystems, Inc.
+ * Copyright © 1998-2000 by Scriptics Corporation.
+ * Copyright © 2002 by Kevin B. Kenny.  All rights reserved.
  *
  * See the file "license.terms" for information on usage and redistribution of
  * this file, and for a DISCLAIMER OF ALL WARRANTIES.
@@ -53,11 +53,11 @@ extern "C" {
 #   error "This header-file is for Tcl 9 only"
 #endif
 #define TCL_MINOR_VERSION   1
-#define TCL_RELEASE_LEVEL   TCL_ALPHA_RELEASE
-#define TCL_RELEASE_SERIAL  2
+#define TCL_RELEASE_LEVEL   TCL_FINAL_RELEASE
+#define TCL_RELEASE_SERIAL  1
 
 #define TCL_VERSION	    "9.1"
-#define TCL_PATCH_LEVEL	    "9.1a2"
+#define TCL_PATCH_LEVEL	    "9.1.1"
 
 #if defined(RC_INVOKED)
 /*
@@ -503,7 +503,7 @@ typedef struct stat *Tcl_OldStat_;
 #define TCL_BREAK		3
 #define TCL_CONTINUE		4
 #define TCL_CODE_USER_MIN	5
-#define TCL_CODE_USER_MAX	0x3fffffff /*  1073741823 */
+#define TCL_CODE_USER_MAX	0x3fffffff /* 1073741823 */
 
 /*
  *----------------------------------------------------------------------------
@@ -534,11 +534,11 @@ typedef void (Tcl_ChannelProc) (void *clientData, int mask);
 typedef void (Tcl_CloseProc) (void *data);
 typedef void (Tcl_CmdDeleteProc) (void *clientData);
 typedef int (Tcl_CmdProc) (void *clientData, Tcl_Interp *interp,
-	int argc, const char *argv[]);
+	int argc, const char **argv);
 #ifndef TCL_NO_DEPRECATED
 typedef void (Tcl_CmdTraceProc) (void *clientData, Tcl_Interp *interp,
 	int level, char *command, Tcl_CmdProc *proc,
-	void *cmdClientData, int argc, const char *argv[]);
+	void *cmdClientData, int argc, const char **argv);
 typedef int (Tcl_CmdObjTraceProc) (void *clientData, Tcl_Interp *interp,
 	int level, const char *command, Tcl_Command commandInfo, int objc,
 	struct Tcl_Obj *const *objv);
@@ -578,7 +578,8 @@ typedef void (Tcl_FreeProc) (void *blockPtr);
 #define Tcl_EncodingFreeProc Tcl_FreeProc
 typedef int (Tcl_LibraryInitProc) (Tcl_Interp *interp);
 typedef int (Tcl_LibraryUnloadProc) (Tcl_Interp *interp, int flags);
-typedef void (Tcl_PanicProc) (const char *format, ...);
+typedef void (Tcl_PanicProc) (const char *format, ...) TCL_FORMAT_PRINTF(1, 2);
+typedef int (Tcl_PostInitProc) (Tcl_Interp *interp, void *clientData);
 typedef void (Tcl_TcpAcceptProc) (void *callbackData, Tcl_Channel chan,
 	char *address, int port);
 typedef void (Tcl_TimerProc) (void *clientData);
@@ -600,14 +601,14 @@ typedef void (Tcl_MainLoopProc) (void);
 /* Abstract List functions */
 typedef Tcl_Size (Tcl_ObjTypeLengthProc) (struct Tcl_Obj *listPtr);
 typedef int (Tcl_ObjTypeIndexProc) (Tcl_Interp *interp, struct Tcl_Obj *listPtr,
-	Tcl_Size index, struct Tcl_Obj** elemObj);
+	Tcl_Size index, struct Tcl_Obj **elemObj);
 typedef int (Tcl_ObjTypeSliceProc) (Tcl_Interp *interp, struct Tcl_Obj *listPtr,
 	Tcl_Size fromIdx, Tcl_Size toIdx, struct Tcl_Obj **newObjPtr);
 typedef int (Tcl_ObjTypeReverseProc) (Tcl_Interp *interp,
 	struct Tcl_Obj *listPtr, struct Tcl_Obj **newObjPtr);
 typedef int (Tcl_ObjTypeGetElements) (Tcl_Interp *interp,
 	struct Tcl_Obj *listPtr, Tcl_Size *objcptr, struct Tcl_Obj ***objvptr);
-typedef	struct Tcl_Obj *(Tcl_ObjTypeSetElement) (Tcl_Interp *interp,
+typedef struct Tcl_Obj *(Tcl_ObjTypeSetElement) (Tcl_Interp *interp,
 	struct Tcl_Obj *listPtr, Tcl_Size indexCount,
 	struct Tcl_Obj *const indexArray[], struct Tcl_Obj *valueObj);
 typedef int (Tcl_ObjTypeReplaceProc) (Tcl_Interp *interp,
@@ -1639,11 +1640,11 @@ typedef struct Tcl_Filesystem {
 				 * if the filesystem does not support glob or
 				 * recursive copy. */
     Tcl_FSUtimeProc *utimeProc;	/* Called by 'Tcl_FSUtime()', by 'file
-				 *  mtime' to set (not read) times, 'file
-				 *  atime', and the open-r/open-w/fcopy variant
-				 *  of 'file copy'. */
+				 * mtime' to set (not read) times, 'file
+				 * atime', and the open-r/open-w/fcopy variant
+				 * of 'file copy'. */
     Tcl_FSLinkProc *linkProc;	/* Called by 'Tcl_FSLink()'. NULL if reading or
-				 *  creating links is not supported. */
+				 * creating links is not supported. */
     Tcl_FSListVolumesProc *listVolumesProc;
 				/* Lists filesystem volumes added by this
 				 * filesystem. NULL if the filesystem does not
@@ -2314,9 +2315,9 @@ EXTERN void		Tcl_StaticLibrary(Tcl_Interp *interp,
 #endif
 EXTERN Tcl_ExitProc *	Tcl_SetExitProc(Tcl_ExitProc *proc);
 #ifdef _WIN32
-EXTERN const char *TclZipfs_AppHook(int *argc, unsigned short ***argv);
+EXTERN const char *	TclZipfs_AppHook(int *argc, unsigned short ***argv);
 #else
-EXTERN const char *TclZipfs_AppHook(int *argc, char ***argv);
+EXTERN const char *	TclZipfs_AppHook(int *argc, char ***argv);
 #endif
 #if defined(_WIN32) && defined(UNICODE)
 #ifndef USE_TCL_STUBS
@@ -2436,8 +2437,8 @@ EXTERN const char *TclZipfs_AppHook(int *argc, char ***argv);
 
 static inline void
 TclBounceRefCount(
-    Tcl_Obj* objPtr,
-    const char* file,
+    Tcl_Obj *objPtr,
+    const char *file,
     int line)
 {
     if (objPtr) {
@@ -2475,7 +2476,7 @@ TclBounceRefCount(
 
 static inline void
 TclBounceRefCount(
-    Tcl_Obj* objPtr)
+    Tcl_Obj *objPtr)
 {
     if (objPtr) {
 	if ((objPtr)->refCount == 0) {

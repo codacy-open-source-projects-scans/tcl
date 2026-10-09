@@ -694,22 +694,22 @@ TclObjLookupVarEx(
 
     ParsedGetInternalRep(part1Ptr, parsed, arrayPtr, elem);
     if (parsed && arrayPtr) {
-	    if (part2Ptr != NULL) {
-		/*
-		 * ERROR: part1Ptr is already an array element, cannot specify
-		 * a part2.
-		 */
+	if (part2Ptr != NULL) {
+	    /*
+	     * ERROR: part1Ptr is already an array element, cannot specify
+	     * a part2.
+	     */
 
-		if (flags & TCL_LEAVE_ERR_MSG) {
-		    TclObjVarErrMsg(interp, part1Ptr, part2Ptr, msg,
-			    NOSUCHVAR, -1);
-		    Tcl_SetErrorCode(interp, "TCL", "VALUE", "VARNAME", (char *)NULL);
-		}
-		return NULL;
+	    if (flags & TCL_LEAVE_ERR_MSG) {
+		TclObjVarErrMsg(interp, part1Ptr, part2Ptr, msg,
+			NOSUCHVAR, -1);
+		Tcl_SetErrorCode(interp, "TCL", "VALUE", "VARNAME", (char *)NULL);
 	    }
-	    part2Ptr = elem;
-	    part1Ptr = arrayPtr;
-	    goto restart;
+	    return NULL;
+	}
+	part2Ptr = elem;
+	part1Ptr = arrayPtr;
+	goto restart;
     }
 
     if (!parsed) {
@@ -1552,7 +1552,7 @@ Tcl_SetObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Obj *varValueObj;
 
@@ -2679,7 +2679,6 @@ UnsetVarStruct(
 
 	if ((dummyVar.flags & VAR_TRACED_UNSET)
 		|| (arrayPtr && (arrayPtr->flags & VAR_TRACED_UNSET))) {
-
 	    /*
 	     * Pass the array element name to TclObjCallVarTraces(), because
 	     * it cannot be determined from dummyVar. Alternatively, indicate
@@ -2799,7 +2798,7 @@ Tcl_UnsetObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Size i;
     int flags = TCL_LEAVE_ERR_MSG;
@@ -2867,7 +2866,7 @@ Tcl_AppendObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Var *varPtr, *arrayPtr;
     Tcl_Obj *varValuePtr = NULL;
@@ -2932,7 +2931,7 @@ Tcl_LappendObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Tcl_Obj *varValuePtr, *newValuePtr;
     Tcl_Size numElems;
@@ -3138,7 +3137,7 @@ ArrayForObjCmd(
     void *clientData,
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     return Tcl_NRCallObjProc2(interp, ArrayForNRCmd, clientData, objc, objv);
 }
@@ -3331,9 +3330,14 @@ ArrayForLoopCallback(
 }
 
 /*
- * ArrayPopulateSearch
+ *----------------------------------------------------------------------
+ *
+ * ArrayPopulateSearch --
+ *
+ *	Set up an already-allocated array search iterator structure.
+ *
+ *----------------------------------------------------------------------
  */
-
 static void
 ArrayPopulateSearch(
     Tcl_Interp *interp,
@@ -3385,7 +3389,7 @@ ArrayStartSearchCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Var *varPtr;
     int isArray;
@@ -3480,7 +3484,7 @@ ArrayAnyMoreCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Interp *iPtr = (Interp *) interp;
     Var *varPtr;
@@ -3558,7 +3562,7 @@ ArrayNextElementCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Var *varPtr;
     Tcl_Obj *varNameObj, *searchObj;
@@ -3638,7 +3642,7 @@ ArrayDoneSearchCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Interp *iPtr = (Interp *) interp;
     Var *varPtr;
@@ -3698,7 +3702,7 @@ ArrayExistsCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Interp *iPtr = (Interp *)interp;
     int isArray;
@@ -3738,7 +3742,7 @@ ArrayGetCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Var *varPtr, *varPtr2;
     Tcl_Obj *varNameObj, *nameObj, *valueObj, *nameLstObj, *tmpResObj;
@@ -3898,7 +3902,7 @@ ArrayNamesCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     static const char *const options[] = {
 	"-exact", "-glob", "-regexp", NULL
@@ -4003,7 +4007,7 @@ ArrayNamesCmd(
  *
  * TclFindArrayPtrElements --
  *
- *	Fill out a hash table (which *must* use Tcl_Obj* keys) with an entry
+ *	Fill out a hash table (which *must* use Tcl_Obj * keys) with an entry
  *	for each existing element of the given array. The provided hash table
  *	is assumed to be initially empty.
  *
@@ -4066,7 +4070,7 @@ ArraySetCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Tcl_Obj *arrayNameObj;
     Tcl_Obj *arrayElemObj;
@@ -4250,7 +4254,7 @@ ArraySizeCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Var *varPtr;
     Tcl_HashSearch search;
@@ -4309,7 +4313,7 @@ ArrayStatsCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Var *varPtr;
     Tcl_Obj *varNameObj;
@@ -4363,7 +4367,7 @@ ArrayUnsetCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Var *varPtr, *varPtr2, *protectedVarPtr;
     Tcl_Obj *varNameObj, *patternObj, *nameObj;
@@ -4891,7 +4895,7 @@ Tcl_ConstObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Var *varPtr, *arrayPtr;
     Tcl_Obj *part1Ptr;
@@ -4969,7 +4973,7 @@ Tcl_GlobalObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Interp *iPtr = (Interp *) interp;
     Tcl_Obj *objPtr, *tailPtr;
@@ -5074,7 +5078,7 @@ Tcl_VariableObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Interp *iPtr = (Interp *) interp;
     const char *varName, *tail, *cp;
@@ -5208,7 +5212,7 @@ Tcl_UpvarObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     CallFrame *framePtr;
     int result, hasLevel;
@@ -6024,7 +6028,7 @@ TclInfoVarsCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Interp *iPtr = (Interp *) interp;
     const char *varName, *pattern, *simplePattern;
@@ -6175,7 +6179,7 @@ TclInfoGlobalsCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     const char *varName, *pattern;
     Namespace *globalNsPtr = (Namespace *) Tcl_GetGlobalNamespace(interp);
@@ -6268,7 +6272,7 @@ TclInfoLocalsCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Interp *iPtr = (Interp *) interp;
     Tcl_Obj *patternPtr, *listPtr;
@@ -6327,7 +6331,7 @@ TclInfoConstsCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Interp *iPtr = (Interp *) interp;
     const char *varName, *pattern, *simplePattern;
@@ -6726,7 +6730,7 @@ TclInfoConstantCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Var *varPtr, *arrayPtr;
     int result;
@@ -6831,7 +6835,7 @@ CompareVarKeys(
      * Only compare string representations of the same length.
      */
 
-    return ((l1 == l2) && !memcmp(p1, p2, l1));
+    return (l1 == l2) && !memcmp(p1, p2, l1);
 }
 
 /*----------------------------------------------------------------------
@@ -6855,7 +6859,7 @@ ArrayDefaultCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     static const char *const options[] = {
 	"get", "set", "exists", "unset", NULL
@@ -6991,14 +6995,20 @@ ArrayDefaultCmd(
 }
 
 /*
- * Initialize array variable.
+ *----------------------------------------------------------------------
+ *
+ * TclInitArrayVar --
+ *
+ *	Initialize array variable.
+ *
+ *----------------------------------------------------------------------
  */
-
 void
 TclInitArrayVar(
     Var *arrayPtr)
 {
-    ArrayVarHashTable *tablePtr = (ArrayVarHashTable *)Tcl_Alloc(sizeof(ArrayVarHashTable));
+    ArrayVarHashTable *tablePtr = (ArrayVarHashTable *)
+	    Tcl_Alloc(sizeof(ArrayVarHashTable));
 
     /*
      * Mark the variable as an array.
@@ -7022,9 +7032,14 @@ TclInitArrayVar(
 }
 
 /*
- * Cleanup array variable.
+ *----------------------------------------------------------------------
+ *
+ * DeleteArrayVar --
+ *
+ *	Cleanup array variable.
+ *
+ *----------------------------------------------------------------------
  */
-
 static void
 DeleteArrayVar(
     Var *arrayPtr)
@@ -7047,9 +7062,14 @@ DeleteArrayVar(
 }
 
 /*
- * Get array default value if any.
+ *----------------------------------------------------------------------
+ *
+ * TclGetArrayDefault --
+ *
+ *	Get array default value if any.
+ *
+ *----------------------------------------------------------------------
  */
-
 Tcl_Obj *
 TclGetArrayDefault(
     Var *arrayPtr)
@@ -7061,9 +7081,14 @@ TclGetArrayDefault(
 }
 
 /*
- * Set/replace/unset array default value.
+ *----------------------------------------------------------------------
+ *
+ * SetArrayDefault --
+ *
+ *	Set/replace/unset array default value.
+ *
+ *----------------------------------------------------------------------
  */
-
 static void
 SetArrayDefault(
     Var *arrayPtr,

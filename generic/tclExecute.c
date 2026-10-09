@@ -414,7 +414,7 @@ VarHashFindVar(
 
 #define POP_OBJECT()	*(tosPtr--)
 
-#define OBJ_AT_TOS	*tosPtr
+#define OBJ_AT_TOS	tosPtr[0]
 
 #define OBJ_UNDER_TOS	tosPtr[-1]
 
@@ -715,7 +715,7 @@ static Tcl_NRPostProc	CopyCallback;
 static Tcl_NRPostProc	ExprObjCallback;
 static Tcl_NRPostProc	FinalizeOONext;
 static Tcl_NRPostProc	FinalizeOONextFilter;
-static Tcl_NRPostProc   TEBCresume;
+static Tcl_NRPostProc	TEBCresume;
 
 /*
  * The structure below defines a bytecode Tcl object type to hold the
@@ -857,7 +857,7 @@ TclCreateExecEnv(
     Tcl_Interp *interp,		/* Interpreter for which the execution
 				 * environment is being created. */
     size_t size)		/* The initial stack size, in number of words
-				 * [sizeof(Tcl_Obj*)] */
+				 * [sizeof(Tcl_Obj *)] */
 {
     ExecEnv *eePtr = (ExecEnv *)Tcl_Alloc(sizeof(ExecEnv));
     ExecStack *esPtr = (ExecStack *)Tcl_Alloc(offsetof(ExecStack, stackWords)
@@ -994,9 +994,15 @@ TclFinalizeExecution(void)
     (TCL_ALLOCALIGN/sizeof(Tcl_Obj *))
 
 /*
- * WordSkip computes how many words have to be skipped until the next aligned
- * word. Note that we are only interested in the low order bits of ptr, so
- * that any possible information loss in PTR2INT is of no consequence.
+ *----------------------------------------------------------------------
+ *
+ * WordSkip --
+ *
+ *	Computes how many words have to be skipped until the next aligned
+ *	word. Note that we are only interested in the low order bits of ptr, so
+ *	that any possible information loss in PTR2INT is of no consequence.
+ *
+ *----------------------------------------------------------------------
  */
 static inline int
 WordSkip(
@@ -1345,7 +1351,7 @@ Tcl_ExprObj(
 				 * expression. */
     Tcl_Obj *objPtr,		/* Points to Tcl object containing expression
 				 * to evaluate. */
-    Tcl_Obj **resultPtrPtr)	/* Where the Tcl_Obj* that is the expression
+    Tcl_Obj **resultPtrPtr)	/* Where the Tcl_Obj * that is the expression
 				 * result is stored if no errors occur. */
 {
     NRE_callback *rootPtr = TOP_CB(interp);
@@ -1975,9 +1981,9 @@ FindTclOOMethodIndex(
  *
  *----------------------------------------------------------------------
  */
-#define	bcFramePtr	(&TD->cmdFrame)
-#define	initCatchTop	(TD->stack - 1)
-#define	initTosPtr	(initCatchTop+codePtr->maxExceptDepth)
+#define bcFramePtr	(&TD->cmdFrame)
+#define initCatchTop	(TD->stack - 1)
+#define initTosPtr	(initCatchTop+codePtr->maxExceptDepth)
 #define esPtr		(iPtr->execEnvPtr->execStackPtr)
 
 int
@@ -3062,7 +3068,7 @@ TEBCresume(
 	pc += pcAdjustment;
 	TEBC_YIELD();
 	return TclNREvalObjv(interp, objc, objv,
-		    TCL_EVAL_NOERR | TCL_EVAL_SOURCE_IN_FRAME, NULL);
+		TCL_EVAL_NOERR | TCL_EVAL_SOURCE_IN_FRAME, NULL);
 
     case INST_INVOKE_REPLACE:
 	objc = TclGetUInt4AtPtr(pc + 1);
@@ -4551,7 +4557,7 @@ TEBCresume(
 #ifndef REMOVE_DEPRECATED_OPCODES
 		    || (*pc == INST_JUMP_TRUE1)
 #endif
-	    ) {
+		    ) {
 		TRACE_APPEND("%.20s false\n", O2S(valuePtr));
 	    } else {
 		TRACE_APPEND("%.20s false, new pc %" SIZEd "\n", O2S(valuePtr),
@@ -5033,7 +5039,7 @@ TEBCresume(
 		/* Could be list of indices. Let TclLindexList handle it below */
 	    } else {
 		if (TclObjTypeIndex(interp, valuePtr, index, &objResultPtr) !=
-		    TCL_OK) {
+			TCL_OK) {
 		    CACHE_STACK_INFO();
 		    TRACE_ERROR(interp);
 		    goto gotError;
@@ -6865,8 +6871,8 @@ TEBCresume(
 		    status = Tcl_ListObjLength(interp, listPtr, &listLen);
 		    elements = NULL;
 		} else {
-		    status = TclListObjGetElements(
-			interp, listPtr, &listLen, &elements);
+		    status = TclListObjGetElements(interp, listPtr,
+			    &listLen, &elements);
 		}
 		if (status != TCL_OK) {
 		    CACHE_STACK_INFO();
@@ -6883,8 +6889,8 @@ TEBCresume(
 			if (elements) {
 			    valuePtr = elements[valIndex];
 			} else {
-			    status = Tcl_ListObjIndex(
-				    interp, listPtr, valIndex, &valuePtr);
+			    status = Tcl_ListObjIndex(interp,
+				    listPtr, valIndex, &valuePtr);
 			    if (status != TCL_OK) {
 				/* Could happen for abstract lists */
 				CACHE_STACK_INFO();
@@ -6943,6 +6949,26 @@ TEBCresume(
 	numLists = infoPtr->numLists;
 	TRACE("=> loop terminated\n");
 	NEXT_INST_V(1, numLists + 2, 0);
+
+    case INST_FOREACH_INDEX: {
+	unsigned listIdx = TclGetUInt4AtPtr(pc + 1),
+		iterVarIdx = TclGetUInt4AtPtr(pc + 5);
+	TRACE("%u %u => ", listIdx, iterVarIdx);
+
+	// Get number of variables from ForeachInfo at TOS
+	infoPtr = (ForeachInfo *)OBJ_AT_TOS->internalRep.twoPtrValue.ptr1;
+	numVars = infoPtr->varLists[listIdx]->numVars;
+
+	// Get the iteration index from the iteration tracker under TOS
+	// Called when the step's already been advanced to the next one...
+	iterNum = (size_t)OBJ_UNDER_TOS->internalRep.twoPtrValue.ptr1 - 1;
+	assert((Tcl_Size) iterVarIdx < numVars);
+
+	// Assume no overflow; we did previously read from this index...
+	objResultPtr = Tcl_NewWideIntObj(numVars * iterNum + iterVarIdx);
+	TRACE_APPEND_NUM_OBJ(objResultPtr);
+	NEXT_INST_F(9, 0, 1);
+    }
 
     case INST_LMAP_COLLECT:
 	/*
@@ -7066,9 +7092,9 @@ TEBCresume(
 	    if (a && b) {
 		match = TclStringCmp(a, b, 1, 0, -1) == 0;
 	    } else if (a) {
-		match = TclGetString(a)[0] == '\0';
+		match = Tcl_IsEmpty(a);
 	    } else if (b) {
-		match = TclGetString(b)[0] == '\0';
+		match = Tcl_IsEmpty(b);
 	    }
 	}
 	TRACE_APPEND("%d\n", match ? 1 : 0);
@@ -7758,15 +7784,15 @@ TEBCresume(
 #endif
 	    break;
 	case CLOCK_READ_MICROS:
-	    now = TclpGetMicroseconds();
+	    now = Tcl_GetDayTime();
 	    wval = now;
 	    break;
 	case CLOCK_READ_MILLIS:
-	    now = TclpGetMicroseconds();
+	    now = Tcl_GetDayTime();
 	    wval = now / 1000;
 	    break;
 	case CLOCK_READ_SECS:
-	    now = TclpGetMicroseconds();
+	    now = Tcl_GetDayTime();
 	    wval = now / 1000000;
 	    break;
 	case CLOCK_READ_MONOTONIC:
@@ -8187,9 +8213,13 @@ FinalizeOONextFilter(
 }
 
 /*
+ *----------------------------------------------------------------------
+ *
  * WidePwrSmallExpon --
  *
- * Helper to calculate small powers of integers whose result is wide.
+ *	Helper to calculate small powers of integers whose result is wide.
+ *
+ *----------------------------------------------------------------------
  */
 static inline Tcl_WideInt
 WidePwrSmallExpon(
@@ -8273,6 +8303,7 @@ WidePwrSmallExpon(
     }
     return wResult;
 }
+
 /*
  *----------------------------------------------------------------------
  *
@@ -8283,7 +8314,7 @@ WidePwrSmallExpon(
  *	them.
  *
  * Results:
- *	A Tcl_Obj* result, or a NULL (in which case valuePtr is updated to
+ *	A Tcl_Obj * result, or a NULL (in which case valuePtr is updated to
  *	hold the result value), or one of the special flag values
  *	GENERAL_ARITHMETIC_ERROR, EXPONENT_OF_ZERO or DIVIDED_BY_ZERO. The
  *	latter two signify a zero value raised to a negative power or a value
@@ -9659,7 +9690,7 @@ Tcl_Obj *
 TclGetSourceFromFrame(
     CmdFrame *cfPtr,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     if (cfPtr == NULL) {
 	return Tcl_NewListObj(objc, objv);
@@ -10080,7 +10111,7 @@ EvalStatsCmd(
     TCL_UNUSED(void *),		/* Unused. */
     Tcl_Interp *interp,		/* The current interpreter. */
     Tcl_Size objc,		/* The number of arguments. */
-    Tcl_Obj *const objv[])	/* The argument strings. */
+    Tcl_Obj *const *objv)	/* The argument strings. */
 {
     Interp *iPtr = (Interp *) interp;
     LiteralTable *globalTablePtr = &iPtr->literalTable;

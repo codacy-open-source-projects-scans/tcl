@@ -6,9 +6,9 @@
  *	Note that this program must be built in Win32 console mode to work
  *	properly.
  *
- * Copyright (c) 1993 The Regents of the University of California.
- * Copyright (c) 1994-1997 Sun Microsystems, Inc.
- * Copyright (c) 1998-1999 Scriptics Corporation.
+ * Copyright © 1993 The Regents of the University of California.
+ * Copyright © 1994-1997 Sun Microsystems, Inc.
+ * Copyright © 1998-1999 Scriptics Corporation.
  *
  * See the file "license.terms" for information on usage and redistribution of
  * this file, and for a DISCLAIMER OF ALL WARRANTIES.
@@ -27,17 +27,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+extern Tcl_PostInitProc    TcltestStaticInit;
 extern Tcl_LibraryInitProc Tcltest_Init;
 extern Tcl_LibraryInitProc Tcltest_SafeInit;
 #ifdef __cplusplus
 }
 #endif
 #endif /* TCL_TEST */
-
-#if defined(STATIC_BUILD)
-extern Tcl_LibraryInitProc Dde_Init;
-extern Tcl_LibraryInitProc Dde_SafeInit;
-#endif
 
 #define WIN32_LEAN_AND_MEAN
 #define STRICT			/* See MSDN Article Q83456 */
@@ -83,6 +79,8 @@ MODULE_SCOPE int TCL_LOCAL_MAIN_HOOK(int *argc, TCHAR ***argv);
 #endif
 
 /*
+ *----------------------------------------------------------------------
+ *
  * TclSetRcFilePath --
  *
  *	Sets the path of the Tcl startup file (usually ".tclshrc"). Will
@@ -97,9 +95,13 @@ MODULE_SCOPE int TCL_LOCAL_MAIN_HOOK(int *argc, TCHAR ***argv);
  *
  * TODO - this function is duplicated in the Unix version of tclAppInit.c.
  * Consider adding it to Tcl library and callable via the stubs table.
+ *
+ *----------------------------------------------------------------------
  */
 static int
-TclSetRcFilePath(Tcl_Interp *interp, const char *path)
+TclSetRcFilePath(
+    Tcl_Interp *interp,
+    const char *path)
 {
     Tcl_DString ds;
     if (Tcl_FSTildeExpand(interp, path, &ds) != TCL_OK) {
@@ -155,6 +157,10 @@ _tmain(
     TclZipfs_AppHook(&argc, &argv);
 #endif
 
+#if defined(TCL_TEST)
+    Tcl_RegisterPostInitProc(TcltestStaticInit, NULL);
+#endif
+
     Tcl_Main(argc, argv, TCL_LOCAL_APPINIT);
     return 0;			/* Needed only to prevent compiler warning. */
 }
@@ -185,20 +191,6 @@ Tcl_AppInit(
     if (Tcl_Init(interp) == TCL_ERROR) {
 	return TCL_ERROR;
     }
-
-#if defined(STATIC_BUILD)
-    if (Dde_Init(interp) == TCL_ERROR) {
-	return TCL_ERROR;
-    }
-    Tcl_StaticLibrary(interp, "Dde", Dde_Init, Dde_SafeInit);
-#endif
-
-#ifdef TCL_TEST
-    if (Tcltest_Init(interp) == TCL_ERROR) {
-	return TCL_ERROR;
-    }
-    Tcl_StaticLibrary(interp, "Tcltest", Tcltest_Init, Tcltest_SafeInit);
-#endif /* TCL_TEST */
 
     /*
      * Call the init procedures for included packages. Each call should look

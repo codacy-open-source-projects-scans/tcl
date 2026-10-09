@@ -468,6 +468,7 @@ TclFSCwdIsNative(void)
  *----------------------------------------------------------------------
  *
  * TclFSCwdPointerEquals --
+ *
  *	Determine whether the given pathname is equal to the current working
  *	directory.
  *
@@ -521,7 +522,7 @@ TclFSCwdPointerEquals(
     }
 
     if (pathPtrPtr == NULL) {
-	return (tsdPtr->cwdPathPtr == NULL);
+	return tsdPtr->cwdPathPtr == NULL;
     }
 
     if (tsdPtr->cwdPathPtr == *pathPtrPtr) {
@@ -633,7 +634,7 @@ int
 TclFSEpochOk(
     size_t filesystemEpoch)
 {
-    return (filesystemEpoch == 0 || filesystemEpoch == theFilesystemEpoch);
+    return (filesystemEpoch == 0) || (filesystemEpoch == theFilesystemEpoch);
 }
 
 static void
@@ -1032,7 +1033,7 @@ Tcl_FSMatchInDirectory(
 	return ret;
     }
 
-    if (pathPtr != NULL && TclGetString(pathPtr)[0] != '\0') {
+    if (pathPtr != NULL && !Tcl_IsEmpty(pathPtr)) {
 	/*
 	 * There is a pathname but it belongs to no known filesystem. Mayday!
 	 */
@@ -1089,6 +1090,7 @@ Tcl_FSMatchInDirectory(
  *----------------------------------------------------------------------
  *
  * FsAddMountsToGlobResult --
+ *
  *	Adds any mounted pathnames to a set of results so that simple things
  *	like 'glob *' merge mounts and listings correctly.  Used by the
  *	Tcl_FSMatchInDirectory.
@@ -1269,7 +1271,7 @@ Tcl_FSMountsChanged(
 void *
 Tcl_FSData(
     const Tcl_Filesystem *fsPtr) /* The filesystem to find in the list of
-				  *  registered filesystems. */
+				  * registered filesystems. */
 {
     void *retVal = NULL;
     FilesystemRecord *fsRecPtr = FsGetFirstFilesystem();
@@ -1572,16 +1574,16 @@ TclGetOpenMode(
 	    if (mode & O_APPEND) {
 	    accessFlagRepeated:
 		if (interp) {
-		Tcl_SetObjResult(interp, Tcl_ObjPrintf(
-			"access mode \"%s\" repeated", flag));
+		    Tcl_SetObjResult(interp, Tcl_ObjPrintf(
+			    "access mode \"%s\" repeated", flag));
 		}
-	    goto invAccessMode;
+		goto invAccessMode;
 	    }
 	    mode |= O_APPEND;
 	    *modeFlagsPtr |= 1;
 	} else if ((c == 'C') && (strcmp(flag, "CREAT") == 0)) {
 	    if (mode & O_CREAT) {
-	    goto accessFlagRepeated;
+		goto accessFlagRepeated;
 	    }
 	    mode |= O_CREAT;
 	} else if ((c == 'E') && (strcmp(flag, "EXCL") == 0)) {
@@ -1603,7 +1605,6 @@ TclGetOpenMode(
 	    }
 	    goto invAccessMode;
 #endif
-
 	} else if ((c == 'N') && (strcmp(flag, "NONBLOCK") == 0)) {
 #ifdef O_NONBLOCK
 	    if (mode & O_NONBLOCK) {
@@ -1830,7 +1831,7 @@ TclNREvalFile(
 				 * evaluate. Tilde-substitution is performed on
 				 * this pathname. */
     const char *encodingName)	/* The name of an encoding to use, or NULL to
-				 *  use the utf-8 encoding. */
+				 * use the utf-8 encoding. */
 {
     Tcl_StatBuf statBuf;
     Tcl_Obj *oldScriptFile, *objPtr;
@@ -2069,6 +2070,7 @@ Tcl_PosixError(
  *----------------------------------------------------------------------
  *
  * Tcl_FSStat --
+ *
  *	Calls 'statProc' of the filesystem corresponding to pathPtr.
  *
  *	Replaces the standard library "stat" routine.
@@ -2085,9 +2087,9 @@ Tcl_PosixError(
 int
 Tcl_FSStat(
     Tcl_Obj *pathPtr,		/* Pathname of the file to call stat on (in
-				 *  current system encoding). */
+				 * current system encoding). */
     Tcl_StatBuf *buf)		/* A buffer to hold the results of the call to
-				 *  stat. */
+				 * stat. */
 {
     const Tcl_Filesystem *fsPtr = Tcl_FSGetFileSystemForPath(pathPtr);
 
@@ -2102,6 +2104,7 @@ Tcl_FSStat(
  *----------------------------------------------------------------------
  *
  * Tcl_FSLstat --
+ *
  *	Calls the 'lstatProc' of the filesystem corresponding to pathPtr.
  *
  *	Replaces the library version of lstat.  If the filesystem doesn't
@@ -3089,7 +3092,6 @@ Tcl_FSLoadFile(
  * Doing the unlink is also an issue within docker containers, whose AUFS
  * bungles this as well, see
  *     https://github.com/dotcloud/docker/issues/1911
- *
  */
 
 #ifdef _WIN32
@@ -3172,7 +3174,7 @@ Tcl_LoadFile(
 				 * functions to find in the loaded object. */
     int flags,			/* Flags */
     void *procVPtrs,		/* A place to store pointers to the functions
-				 *  named by symbols[]. */
+				 * named by symbols[]. */
     Tcl_LoadHandle *handlePtr)	/* A place to hold a token for the loaded object.
 				 * Can be used by TclpFindSymbol. */
 {
@@ -3914,10 +3916,11 @@ TclGetPathType(
     type = TclFSNonnativePathType(path, pathLen, filesystemPtrPtr,
 	    driveNameLengthPtr, driveNameRef);
 
-    if (type != TCL_PATH_ABSOLUTE) {
+    if (type == TCL_PATH_RELATIVE) {
 	type = TclpGetNativePathType(pathPtr, driveNameLengthPtr,
 		driveNameRef);
-	if ((type == TCL_PATH_ABSOLUTE) && (filesystemPtrPtr != NULL)) {
+	/* Bug 1215dca78f - If not relative, need to update owning FS. */
+	if ((type != TCL_PATH_RELATIVE) && (filesystemPtrPtr != NULL)) {
 	    *filesystemPtrPtr = &tclNativeFilesystem;
 	}
     }
@@ -4012,6 +4015,7 @@ TclFSNonnativePathType(
 		    Tcl_Obj *vol;
 		    Tcl_Size len;
 		    const char *strVol;
+		    bool matched = false;
 
 		    numVolumes--;
 		    Tcl_ListObjIndex(NULL, thisFsVolumes, numVolumes, &vol);
@@ -4021,6 +4025,16 @@ TclFSNonnativePathType(
 		    }
 		    if (strncmp(strVol, path, len) == 0) {
 			type = TCL_PATH_ABSOLUTE;
+			matched = true;
+		    } else if (len > 2 && strVol[len - 1] == '/' &&
+			    strVol[len - 2] == ':' &&
+			    strncmp(strVol, path, len - 2) == 0) {
+			matched = true;
+			type = TCL_PATH_VOLUME_RELATIVE;
+			len--;
+			Tcl_SetObjLength(vol, len);
+		    }
+		    if (matched) {
 			if (filesystemPtrPtr != NULL) {
 			    *filesystemPtrPtr = fsRecPtr->fsPtr;
 			}
@@ -4035,7 +4049,7 @@ TclFSNonnativePathType(
 		    }
 		}
 		Tcl_DecrRefCount(thisFsVolumes);
-		if (type == TCL_PATH_ABSOLUTE) {
+		if (type != TCL_PATH_RELATIVE) {
 		    /*
 		     * No need to examine additional filesystems.
 		     */
@@ -4486,7 +4500,7 @@ Tcl_FSGetFileSystemForPath(
  *
  * Tcl_FSGetNativePath --
  *
- *  See Tcl_FSGetInternalRep.
+ *	See Tcl_FSGetInternalRep.
  *
  *---------------------------------------------------------------------------
  */
@@ -4525,6 +4539,7 @@ NativeFreeInternalRep(
  *---------------------------------------------------------------------------
  *
  * Tcl_FSFileSystemInfo --
+ *
  *	Produce the type of a pathname and the type of its filesystem.
  *
  *

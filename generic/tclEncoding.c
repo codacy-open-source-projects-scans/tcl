@@ -1358,14 +1358,14 @@ Tcl_ExternalToUtf(
 	dstChars = *dstCharsPtr;
     }
     result = Tcl_ExternalToUtfEx(interp, encoding, src, srcLen, flags,
-		statePtr, dst, dstLen,
-		srcReadPtr ? &srcRead : NULL,
-		dstWrotePtr ? &dstWrote : NULL,
-		dstCharsPtr ? &dstChars : NULL);
+	    statePtr, dst, dstLen,
+	    srcReadPtr ? &srcRead : NULL,
+	    dstWrotePtr ? &dstWrote : NULL,
+	    dstCharsPtr ? &dstChars : NULL);
 
     if ((srcReadPtr && srcRead > INT_MAX) ||
-	(dstWrotePtr && dstWrote > INT_MAX) ||
-	(dstCharsPtr && dstChars > INT_MAX)) {
+	    (dstWrotePtr && dstWrote > INT_MAX) ||
+	    (dstCharsPtr && dstChars > INT_MAX)) {
 	/* An output count is too large for integer width */
 	srcRead = 0;
 	dstWrote = 0;
@@ -1619,7 +1619,7 @@ Tcl_ExternalToUtfEx(
 	/* Handle the most likely cases first */
 	if (result == TCL_OK) {
 	    if (allInputSeen ||
-		(charLimited && dstCharsWritten >= *dstCharsPtr)) {
+		    (charLimited && dstCharsWritten >= *dstCharsPtr)) {
 		break; /* 1a */
 	    }
 	    /* else 1b continue loop */
@@ -1926,14 +1926,14 @@ Tcl_UtfToExternal(
     }
 
     result = Tcl_UtfToExternalEx(interp, encoding, src, srcLen, flags,
-		statePtr, dst, dstLen,
-		srcReadPtr ? &srcRead : NULL,
-		dstWrotePtr ? &dstWrote : NULL,
-		dstCharsPtr ? &dstChars : NULL);
+	    statePtr, dst, dstLen,
+	    srcReadPtr ? &srcRead : NULL,
+	    dstWrotePtr ? &dstWrote : NULL,
+	    dstCharsPtr ? &dstChars : NULL);
 
     if ((srcReadPtr && srcRead > INT_MAX) ||
-	(dstWrotePtr && dstWrote > INT_MAX) ||
-	(dstCharsPtr && dstChars > INT_MAX)) {
+	    (dstWrotePtr && dstWrote > INT_MAX) ||
+	    (dstCharsPtr && dstChars > INT_MAX)) {
 	/* An output count is too large for integer width */
 	srcRead = 0;
 	dstWrote = 0;
@@ -2197,7 +2197,7 @@ Tcl_UtfToExternalEx(
 	/* Handle the most likely cases first */
 	if (result == TCL_OK) {
 	    if (allInputSeen ||
-		(charLimited && dstCharsWritten >= *dstCharsPtr)) {
+		    (charLimited && dstCharsWritten >= *dstCharsPtr)) {
 		break; /* 1a */
 	    }
 	    /* else 1b continue loop */
@@ -2276,6 +2276,9 @@ Tcl_FindExecutable(
     const char *version = Tcl_InitSubsystems();
     TclpSetInitialEncodings();
     TclpFindExecutable(argv0);
+#ifdef STATIC_BUILD
+    Tcl_RegisterPostInitProc(TclInitStaticPackages, NULL);
+#endif
     return version;
 }
 
@@ -2304,7 +2307,8 @@ OpenEncodingFileChannel(
     const char *name)		/* The name of the encoding file on disk and
 				 * also the name for new encoding. */
 {
-    Tcl_Obj *fileNameObj = Tcl_ObjPrintf("%s.enc", name);
+    Tcl_Obj *fileNameObj = Tcl_NewStringObj(name, TCL_AUTO_LENGTH);
+    Tcl_AppendToObj(fileNameObj, ".enc", TCL_AUTO_LENGTH);
     Tcl_Obj *searchPath = Tcl_DuplicateObj(Tcl_GetEncodingSearchPath());
     Tcl_Obj *map = TclGetProcessGlobalValue(&encodingFileMap);
     Tcl_Obj **dir, *path, *directory = NULL;
@@ -3011,13 +3015,13 @@ UtfToUtfProc(
 	}
 
 	if (BYTE_COPYABLE(*src)) {
-    	    /*
-    	     * Common case fast path for non-nul ASCII bytes.
-    	     *
-    	     * Because we resolved any pending surrogate above (before the
-    	     * loop), *statePtr is guaranteed to be 0 here, so no
-    	     * CHECK_ISOLATEDSURROGATE() call is needed.
-    	     */
+	    /*
+	     * Common case fast path for non-nul ASCII bytes.
+	     *
+	     * Because we resolved any pending surrogate above (before the
+	     * loop), *statePtr is guaranteed to be 0 here, so no
+	     * CHECK_ISOLATEDSURROGATE() call is needed.
+	     */
 	    const char *p = src;
 	    ptrdiff_t copyCount = srcEnd - src;
 	    if (charLimit != INT_MAX) {
@@ -3104,8 +3108,8 @@ UtfToUtfProc(
 
 	    if (SURROGATE(ch)) {
 		if (PROFILE_STRICT(profile)) {
-		    result = (flags & ENCODING_INPUT) ? TCL_CONVERT_SYNTAX
-						      : TCL_CONVERT_UNKNOWN;
+		    result = (flags & ENCODING_INPUT)
+			    ? TCL_CONVERT_SYNTAX : TCL_CONVERT_UNKNOWN;
 		    src = saveSrc;
 		    break;
 		} else if (PROFILE_REPLACE(profile)) {
@@ -3148,6 +3152,8 @@ UtfToUtfProc(
 }
 
 /*
+ *----------------------------------------------------------------------
+ *
  * UtfToCesu8Proc --
  *
  *	Converts TUTF-8 to CESU-8 unless ENCODING_INPUT is set in flags
@@ -3158,6 +3164,8 @@ UtfToUtfProc(
  *
  * Side effects:
  *	None.
+ *
+ *----------------------------------------------------------------------
  */
 
 static int
@@ -3275,13 +3283,13 @@ UtfToCesu8Proc(
 	}
 	if (BYTE_COPYABLE(*src)) {
 	    CHECK_ISOLATEDSURROGATE();
-    	    /*
-    	     * Common case fast path for non-0 ASCII. Condition to be met
-    	     *  - ASCII byte
-    	     *  - not nul byte when in ENCODING_INPUT (nul must be converted)
-    	     *  - charLimit not reached
-    	     *  - destination not full
-    	     */
+	    /*
+	     * Common case fast path for non-0 ASCII. Condition to be met
+	     *  - ASCII byte
+	     *  - not nul byte when in ENCODING_INPUT (nul must be converted)
+	     *  - charLimit not reached
+	     *  - destination not full
+	     */
 	    const char *p = src;
 	    ptrdiff_t copyCount = srcEnd - src;
 	    /* Limit to caller-specified character count */
@@ -3396,13 +3404,13 @@ UtfToCesu8Proc(
 		    if (savedSurrogate) {
 			assert(HIGH_SURROGATE(savedSurrogate));
 			ch = 0x10000 + ((savedSurrogate - 0xd800) << 10) +
-			     (ch - 0xdc00);
+				(ch - 0xdc00);
 		    } else {
 			/* Isolated low surrogate */
 			if (PROFILE_STRICT(profile)) {
 			    result = (flags & ENCODING_INPUT)
-				       ? TCL_CONVERT_SYNTAX
-				       : TCL_CONVERT_UNKNOWN;
+				    ? TCL_CONVERT_SYNTAX
+				    : TCL_CONVERT_UNKNOWN;
 			    src = saveSrc;
 			    break;
 			} else if (PROFILE_REPLACE(profile)) {
@@ -3419,8 +3427,8 @@ UtfToCesu8Proc(
 			assert(HIGH_SURROGATE(savedSurrogate));
 			if (PROFILE_STRICT(profile)) {
 			    result = (flags & ENCODING_INPUT)
-				       ? TCL_CONVERT_SYNTAX
-				       : TCL_CONVERT_UNKNOWN;
+				    ? TCL_CONVERT_SYNTAX
+				    : TCL_CONVERT_UNKNOWN;
 			    src = saveSrc;
 			    break;
 			} else if (PROFILE_REPLACE(profile)) {
@@ -3506,8 +3514,10 @@ UtfToCesu8Proc(
 
 #undef BYTE_COPYABLE
 }
-
+
 /*
+ *----------------------------------------------------------------------
+ *
  * Cesu8ToUtfProc --
  *
  *	Converts CESU-8 to TUTF-8.
@@ -3518,11 +3528,19 @@ UtfToCesu8Proc(
  *
  * Side effects:
  *	None.
+ *
+ *----------------------------------------------------------------------
  */
 static int
-Cesu8ToUtfProc(void *clientData, const char *src, int srcLen, int flags,
-    Tcl_EncodingState *statePtr, char *dst, int dstLen,
-    int *srcReadPtr, int *dstWrotePtr, int *dstCharsPtr)
+Cesu8ToUtfProc(
+    void *clientData,
+    const char *src, int srcLen,
+    int flags,
+    Tcl_EncodingState *statePtr,
+    char *dst, int dstLen,
+    int *srcReadPtr,
+    int *dstWrotePtr,
+    int *dstCharsPtr)
 {
     return UtfToCesu8Proc(clientData,
 	    src, srcLen, flags | ENCODING_INPUT, statePtr,
@@ -5266,7 +5284,7 @@ unilen4(
 /*
  *-------------------------------------------------------------------------
  *
- * InitializeEncodingSearchPath	--
+ * InitializeEncodingSearchPath --
  *
  *	This is the fallback routine that sets the default value of the
  *	encoding search path if the application has not set one via a call to
@@ -5593,7 +5611,7 @@ TclUtfNormalize(
  *	A standard Tcl error code.
  *
  * Side effects:
- *      The output string is stored in dsPtr, which is initialized.
+ *	The output string is stored in dsPtr, which is initialized.
  *
  *------------------------------------------------------------------------
  */
@@ -5626,7 +5644,7 @@ Tcl_UtfToNormalizedDString(
 	if (result != TCL_OK) {
 	    normLength = -1;
 	}
-	free(normUtf8); /* NOT Tcl_Free! */
+	utf8proc_free(normUtf8); /* NOT Tcl_Free! */
     }
     Tcl_FreeEncoding(encoding);
     return normLength >= 0 ? TCL_OK : TCL_ERROR;
@@ -5644,7 +5662,7 @@ Tcl_UtfToNormalizedDString(
  *	A standard Tcl error code.
  *
  * Side effects:
- *      The output string is stored in bufPtr.
+ *	The output string is stored in bufPtr.
  *
  *------------------------------------------------------------------------
  */
@@ -5710,7 +5728,7 @@ Tcl_UtfToNormalized(
 	result = TCL_OK;
     }
 
-    free(normUtf8); /* NOT Tcl_Free! */
+    utf8proc_free(normUtf8); /* NOT Tcl_Free! */
     return result;
 }
 

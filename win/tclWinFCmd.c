@@ -140,7 +140,7 @@ static int		TraverseWinTree(TraversalProc *traverseProc,
  *	EEXIST:	    dst is a non-empty directory.
  *	EINVAL:	    src is a root directory or dst is a subdirectory of src.
  *	EISDIR:	    dst is a directory, but src is not.
- *	ENOENT:	    src doesn't exist.	src or dst is "".
+ *	ENOENT:	    src doesn't exist. src or dst is "".
  *	ENOTDIR:    src is a directory, but dst is not.
  *	EXDEV:	    src and dst are on different filesystems.
  *
@@ -352,10 +352,10 @@ DoRenameFile(
     Tcl_DStringFree(&dstString);
 
     if (srcArgc == 1) {
-		/*
-		 * They are trying to move a root directory. Whether or not it
-		 * is across filesystems, this cannot be done.
-		 */
+	/*
+	 * They are trying to move a root directory. Whether or not it
+	 * is across filesystems, this cannot be done.
+	 */
 
 	Tcl_SetErrno(EINVAL);
     } else if ((srcArgc > 0) && (dstArgc > 0) &&
@@ -400,7 +400,7 @@ DoRenameFile(
  *
  *	EACCES:	    src or dst parent directory can't be read and/or written.
  *	EISDIR:	    src or dst is a directory.
- *	ENOENT:	    src doesn't exist.	src or dst is "".
+ *	ENOENT:	    src doesn't exist. src or dst is "".
  *
  *	EACCES:	    exists an open file already referring to dst (95).
  *	EACCES:	    src specifies a char device (nul:, com1:, etc.) (NT)
@@ -576,7 +576,7 @@ TclpDeleteFile(
 		int fileAttrChanged = 0;
 		if (attr & FILE_ATTRIBUTE_READONLY) {
 		    fileAttrChanged = SetFileAttributesW(path,
-			attr & ~((DWORD)FILE_ATTRIBUTE_READONLY));
+			    attr & ~((DWORD)FILE_ATTRIBUTE_READONLY));
 
 		    if (fileAttrChanged && (DeleteFileW(path) != FALSE)) {
 			return TCL_OK;
@@ -1429,7 +1429,7 @@ ConvertFileNameFormat(
     }
 
     /*
-     * We will decrement this again at the end.	 It is safer to do this in
+     * We will decrement this again at the end. It is safer to do this in
      * case any of the calls below retain a reference to splitPath.
      */
 
@@ -1808,14 +1808,18 @@ TclpCreateTemporaryDirectory(
      */
 
     if (dirObj) {
-	TclGetString(dirObj);
-	if (dirObj->length < 1) {
+	Tcl_Size dirLen;
+	const char *dirPtr = TclGetStringFromObj(dirObj, &dirLen);
+	if (dirLen < 1) {
 	    goto useSystemTemp;
 	}
 	Tcl_DStringInit(&base);
-	Tcl_UtfToWCharDString(TclGetString(dirObj), TCL_INDEX_NONE, &base);
-	if (dirObj->bytes[dirObj->length - 1] != '\\') {
-	    Tcl_UtfToWCharDString("\\", TCL_INDEX_NONE, &base);
+	Tcl_UtfToWCharDString(dirPtr, dirLen, &base);
+	/* Bug 59cc110f */
+	if (dirPtr[dirLen - 1] != '\\' && dirPtr[dirLen - 1] != '/') {
+	    /* Append the separator in use */
+	    const char *sepPtr = strchr(dirPtr, '\\');
+	    Tcl_UtfToWCharDString(sepPtr ? "\\" : "/", 1, &base);
 	}
     } else {
     useSystemTemp:
@@ -1889,16 +1893,20 @@ TclpCreateTemporaryDirectory(
 }
 
 /*
+ *----------------------------------------------------------------------
+ *
  * ResetFileACL --
  *
- *      Resets a file ACL to allow full access as long the process
- *      user id has permissions.
+ *	Resets a file ACL to allow full access as long the process
+ *	user id has permissions.
  *
  * Results:
  *	0 on success, or a Windows error code.
  *
  * Side effects:
  *	Changes the ACL on the file.
+ *
+ *----------------------------------------------------------------------
  */
 static int
 ResetFileACL(

@@ -357,11 +357,7 @@ static void
 SerialBlockTime(
     int msec)			/* milli-seconds */
 {
-    Tcl_Time blockTime;
-
-    blockTime.sec  =  msec / 1000;
-    blockTime.usec = (msec % 1000) * 1000;
-    Tcl_SetMaxBlockTime(&blockTime);
+    Tcl_SetMaxBlockTime2(msec * 1000);
 }
 
 /*
@@ -688,10 +684,10 @@ SerialBlockingRead(
     LPOVERLAPPED osPtr)		/* OVERLAPPED structure */
 {
     /*
-     *  Perform overlapped blocking read.
-     *  1. Reset the overlapped event
-     *  2. Start overlapped read operation
-     *  3. Wait for completion
+     * Perform overlapped blocking read.
+     * 1. Reset the overlapped event
+     * 2. Start overlapped read operation
+     * 3. Wait for completion
      */
 
     /*
@@ -754,12 +750,12 @@ SerialBlockingWrite(
 
     /*
      * Perform overlapped blocking write.
-     *  1. Reset the overlapped event
-     *  2. Remove these bytes from the output queue counter
-     *  3. Start overlapped write operation
-     *  3. Remove these bytes from the output queue counter
-     *  4. Wait for completion
-     *  5. Adjust the output queue counter
+     * 1. Reset the overlapped event
+     * 2. Remove these bytes from the output queue counter
+     * 3. Start overlapped write operation
+     * 4. Remove these bytes from the output queue counter
+     * 5. Wait for completion
+     * 6. Adjust the output queue counter
      */
 
     ResetEvent(osPtr->hEvent);
@@ -1025,7 +1021,6 @@ SerialOutputProc(
 	ResetEvent(infoPtr->evWritable);
 	TclPipeThreadSignal(&infoPtr->writeTI);
 	bytesWritten = (DWORD) toWrite;
-
     } else {
 	/*
 	 * In the blocking case, just try to write the buffer directly. This
@@ -1881,21 +1876,24 @@ SerialSetOptionProc(
 	 * -sysbuffer 4096 or -sysbuffer {64536 4096}
 	 */
 
-	int inSize = -1, outSize = -1;
+	int inSize = -1, outSize = -1, parseState = TCL_OK;
 
 	if (Tcl_SplitList(interp, value, &argc, &argv) == TCL_ERROR) {
 	    return TCL_ERROR;
 	}
 	if (argc == 1) {
-	    inSize = atoi(argv[0]);
+	    parseState = Tcl_GetInt(NULL, argv[0], &inSize);
 	    outSize = infoPtr->sysBufWrite;
 	} else if (argc == 2) {
-	    inSize  = atoi(argv[0]);
-	    outSize = atoi(argv[1]);
+	    parseState = Tcl_GetInt(NULL, argv[0], &inSize);
+	    if (parseState == TCL_OK) {
+		parseState = Tcl_GetInt(NULL, argv[1], &outSize);
+	    }
 	}
 	Tcl_Free((void *)argv);
 
-	if ((argc < 1) || (argc > 2) || (inSize <= 0) || (outSize <= 0)) {
+	if ((argc < 1) || (argc > 2) || (parseState != TCL_OK)
+		|| (inSize <= 0) || (outSize <= 0)) {
 	    if (interp != NULL) {
 		Tcl_SetObjResult(interp, Tcl_ObjPrintf(
 			"bad value \"%s\" for -sysbuffer: should be "

@@ -86,7 +86,7 @@ enum {
 
 #define kFinfoIsInvisible	(OSSwapHostToBigConstInt16(kIsInvisible))
 
-typedef	struct finderinfo {
+typedef struct finderinfo {
     u_int32_t type;
     u_int32_t creator;
     u_int16_t fdFlags;
@@ -399,6 +399,14 @@ TclMacOSXCopyFileAttributes(
     const Tcl_StatBuf *statBufPtr)
 				/* Stat info for source file */
 {
+    /*
+     * FIFOs do not have attributes, moreover calling copyfile() 
+     * could cause a blocking deadlock in the macOS VFS layer,
+     * see [7b4a819535231639].
+     */
+    if (S_ISFIFO(statBufPtr->st_mode)) {
+	return TCL_OK;
+    }
     if (MayUseCopyFile()) {
 #ifdef HAVE_COPYFILE
 	if (0 == copyfile(src, dst, NULL, (S_ISLNK(statBufPtr->st_mode)

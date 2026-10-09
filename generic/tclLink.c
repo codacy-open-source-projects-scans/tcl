@@ -555,9 +555,14 @@ IsSpecial(
 }
 
 /*
- * Mark an object as holding a weird double.
+ *----------------------------------------------------------------------
+ *
+ * SetInvalidRealFromAny --
+ *
+ *	Mark an object as holding a weird double.
+ *
+ *----------------------------------------------------------------------
  */
-
 static int
 SetInvalidRealFromAny(
     TCL_UNUSED(Tcl_Interp *),
@@ -600,12 +605,17 @@ SetInvalidRealFromAny(
 }
 
 /*
- * This function checks for integer representations, which are valid
- * when linking with C variables, but which are invalid in other
- * contexts in Tcl. Handled are "+", "-", "", "0x", "0b", "0d" and "0o"
- * (upperand lowercase). See bug [39f6304c2e].
+ *----------------------------------------------------------------------
+ *
+ * GetInvalidIntFromObj --
+ *
+ *	This function checks for integer representations, which are valid
+ *	when linking with C variables, but which are invalid in other
+ *	contexts in Tcl. Handled are "+", "-", "", "0x", "0b", "0d" and "0o"
+ *	(upperand lowercase). See bug [39f6304c2e].
+ *
+ *----------------------------------------------------------------------
  */
-
 static int
 GetInvalidIntFromObj(
     Tcl_Obj *objPtr,
@@ -624,14 +634,19 @@ GetInvalidIntFromObj(
     }
     return TCL_ERROR;
 }
-
+
 /*
- * This function checks for double representations, which are valid
- * when linking with C variables, but which are invalid in other
- * contexts in Tcl. Handled are "+", "-", "", ".", "0x", "0b" and "0o"
- * (upper- and lowercase) and sequences like "1e-". See bug [39f6304c2e].
+ *----------------------------------------------------------------------
+ *
+ * GetInvalidDoubleFromObj --
+ *
+ *	This function checks for double representations, which are valid
+ *	when linking with C variables, but which are invalid in other
+ *	contexts in Tcl. Handled are "+", "-", "", ".", "0x", "0b" and "0o"
+ *	(upper- and lowercase) and sequences like "1e-". See bug [39f6304c2e].
+ *
+ *----------------------------------------------------------------------
  */
-
 static int
 GetInvalidDoubleFromObj(
     Tcl_Obj *objPtr,
@@ -674,7 +689,6 @@ GetInvalidDoubleFromObj(
  *
  *----------------------------------------------------------------------
  */
-
 static char *
 LinkTraceProc(
     void *clientData,		/* Contains information about the link. */
@@ -1146,7 +1160,7 @@ LinkTraceProc(
  *
  * ObjValue --
  *
- *	Converts the value of a C variable to a Tcl_Obj* for use in a Tcl
+ *	Converts the value of a C variable to a Tcl_Obj * for use in a Tcl
  *	variable to which it is linked.
  *
  * Results:
@@ -1158,7 +1172,6 @@ LinkTraceProc(
  *
  *----------------------------------------------------------------------
  */
-
 static Tcl_Obj *
 ObjValue(
     Link *linkPtr)		/* Structure describing linked variable. */
@@ -1368,7 +1381,6 @@ ObjValue(
  *
  *----------------------------------------------------------------------
  */
-
 static void
 LinkFree(
     Link *linkPtr)		/* Structure describing linked variable. */

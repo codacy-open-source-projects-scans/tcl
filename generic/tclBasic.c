@@ -82,7 +82,7 @@
 void *
 TclGetCStackPtr(void)
 {
-#if defined( __GNUC__ ) || __has_builtin(__builtin_frame_address)
+#if defined(__GNUC__) || __has_builtin(__builtin_frame_address)
     return __builtin_frame_address(0);
 #elif defined(_MSC_VER)
     return _AddressOfReturnAddress();
@@ -177,6 +177,7 @@ static int		CheckDoubleResult(Tcl_Interp *interp, double dResult);
 static void		DeleteCoroutine(void *clientData);
 static Tcl_FreeProc	DeleteInterpProc;
 static void		DeleteOpCmdClientData(void *clientData);
+static Tcl_ObjCmdProc2	DivModObjCmd;
 #ifdef USE_DTRACE
 static Tcl_ObjCmdProc2	DTraceObjCmd;
 static Tcl_NRPostProc	DTraceCmdReturn;
@@ -186,10 +187,12 @@ static Tcl_NRPostProc	DTraceCmdReturn;
 static Tcl_ObjCmdProc2	InvokeStringCommand;
 static Tcl_ObjCmdProc2	ExprAbsFunc;
 static Tcl_ObjCmdProc2	ExprBinaryFunc;
+static Tcl_ObjCmdProc2	ExprBinaryDIFunc;
 static Tcl_ObjCmdProc2	ExprBoolFunc;
 static Tcl_ObjCmdProc2	ExprCeilFunc;
 static Tcl_ObjCmdProc2	ExprDoubleFunc;
 static Tcl_ObjCmdProc2	ExprFloorFunc;
+static Tcl_ObjCmdProc2	ExprFmaFunc;
 static Tcl_ObjCmdProc2	ExprIntFunc;
 static Tcl_ObjCmdProc2	ExprIsqrtFunc;
 static Tcl_ObjCmdProc2	ExprIsFiniteFunc;
@@ -198,34 +201,39 @@ static Tcl_ObjCmdProc2	ExprIsNaNFunc;
 static Tcl_ObjCmdProc2	ExprIsNormalFunc;
 static Tcl_ObjCmdProc2	ExprIsSubnormalFunc;
 static Tcl_ObjCmdProc2	ExprIsUnorderedFunc;
+static Tcl_ObjCmdProc2	ExprLgammaFunc;
 static Tcl_ObjCmdProc2	ExprMaxFunc;
 static Tcl_ObjCmdProc2	ExprMinFunc;
 static Tcl_ObjCmdProc2	ExprRandFunc;
 static Tcl_ObjCmdProc2	ExprRoundFunc;
+static Tcl_ObjCmdProc2	ExprSignBitFunc;
 static Tcl_ObjCmdProc2	ExprSqrtFunc;
 static Tcl_ObjCmdProc2	ExprSrandFunc;
 static Tcl_ObjCmdProc2	ExprUnaryFunc;
 static Tcl_ObjCmdProc2	ExprWideFunc;
+static Tcl_ObjCmdProc2	FracExpObjCmd;
 static Tcl_ObjCmdProc2	FloatClassifyObjCmd;
 static void		MathFuncWrongNumArgs(Tcl_Interp *interp, Tcl_Size expected,
 			    Tcl_Size actual, Tcl_Obj *const *objv);
+static Tcl_ObjCmdProc2	ModFObjCmd;
 static Tcl_NRPostProc	NRCoroutineCallerCallback;
 static Tcl_NRPostProc	NRCoroutineExitCallback;
 static Tcl_NRPostProc	NRCommand;
 
 static void		ProcessUnexpectedResult(Tcl_Interp *interp,
 			    int returnCode);
+static Tcl_ObjCmdProc2	RemQuoObjCmd;
 static int		RewindCoroutine(CoroutineData *corPtr, int result);
 static void		TEOV_SwitchVarFrame(Tcl_Interp *interp);
 static void		TEOV_PushExceptionHandlers(Tcl_Interp *interp,
-			    Tcl_Size objc, Tcl_Obj *const objv[], int flags);
+			    Tcl_Size objc, Tcl_Obj *const *objv, int flags);
 static inline Command *	TEOV_LookupCmdFromObj(Tcl_Interp *interp,
 			    Tcl_Obj *namePtr, Namespace *lookupNsPtr);
 static int		TEOV_NotFound(Tcl_Interp *interp, Tcl_Size objc,
-			    Tcl_Obj *const objv[], Namespace *lookupNsPtr);
+			    Tcl_Obj *const *objv, Namespace *lookupNsPtr);
 static int		TEOV_RunEnterTraces(Tcl_Interp *interp,
 			    Command **cmdPtrPtr, Tcl_Obj *commandPtr, Tcl_Size objc,
-			    Tcl_Obj *const objv[]);
+			    Tcl_Obj *const *objv);
 static Tcl_NRPostProc	RewindCoroutineCallback;
 static Tcl_NRPostProc	TEOEx_ByteCodeCallback;
 static Tcl_NRPostProc	TEOEx_ListCallback;
@@ -310,6 +318,7 @@ static const CmdInfo builtInCmds[] = {
     {"coroinject",	NULL,			NULL,			TclNRCoroInjectObjCmd,	CMD_IS_SAFE},
     {"coroprobe",	NULL,			NULL,			TclNRCoroProbeObjCmd,	CMD_IS_SAFE},
     {"coroutine",	NULL,			NULL,			TclNRCoroutineObjCmd,	CMD_IS_SAFE},
+    {"divmod",		DivModObjCmd,		NULL,			NULL,	CMD_IS_SAFE},
     {"error",		Tcl_ErrorObjCmd,	TclCompileErrorCmd,	NULL,	CMD_IS_SAFE},
     {"eval",		Tcl_EvalObjCmd,		NULL,			TclNREvalObjCmd,	CMD_IS_SAFE},
     {"expr",		Tcl_ExprObjCmd,		TclCompileExprCmd,	TclNRExprObjCmd,	CMD_IS_SAFE},
@@ -317,6 +326,7 @@ static const CmdInfo builtInCmds[] = {
     {"foreach",		Tcl_ForeachObjCmd,	TclCompileForeachCmd,	TclNRForeachCmd,	CMD_IS_SAFE},
     {"format",		Tcl_FormatObjCmd,	TclCompileFormatCmd,	NULL,	CMD_IS_SAFE},
     {"fpclassify",	FloatClassifyObjCmd,    NULL,			NULL,	CMD_IS_SAFE},
+    {"frexp",		FracExpObjCmd,		NULL,			NULL,	CMD_IS_SAFE},
     {"global",		Tcl_GlobalObjCmd,	TclCompileGlobalCmd,	NULL,	CMD_IS_SAFE},
     {"if",		Tcl_IfObjCmd,		TclCompileIfCmd,	TclNRIfObjCmd,	CMD_IS_SAFE},
     {"incr",		Tcl_IncrObjCmd,		TclCompileIncrCmd,	NULL,	CMD_IS_SAFE},
@@ -324,6 +334,7 @@ static const CmdInfo builtInCmds[] = {
     {"lappend",		Tcl_LappendObjCmd,	TclCompileLappendCmd,	NULL,	(CommandFlags)(CMD_IS_SAFE|CMD_COMPILES_EXPANDED)},
     {"lassign",		Tcl_LassignObjCmd,	TclCompileLassignCmd,	NULL,	CMD_IS_SAFE},
     {"ledit",		Tcl_LeditObjCmd,	TclCompileLeditCmd,	NULL,	CMD_IS_SAFE},
+    {"lfilter",		Tcl_LfilterObjCmd,	TclCompileLfilterCmd,	TclNRLfilterCmd,	CMD_IS_SAFE},
     {"lindex",		Tcl_LindexObjCmd,	TclCompileLindexCmd,	NULL,	CMD_IS_SAFE},
     {"linsert",		Tcl_LinsertObjCmd,	TclCompileLinsertCmd,	NULL,	CMD_IS_SAFE},
     {"list",		Tcl_ListObjCmd,		TclCompileListCmd,	NULL,	(CommandFlags)(CMD_IS_SAFE|CMD_COMPILES_EXPANDED)},
@@ -339,10 +350,12 @@ static const CmdInfo builtInCmds[] = {
     {"lseq",		Tcl_LseqObjCmd,		TclCompileLseqCmd,	NULL,	CMD_IS_SAFE},
     {"lset",		Tcl_LsetObjCmd,		TclCompileLsetCmd,	NULL,	CMD_IS_SAFE},
     {"lsort",		Tcl_LsortObjCmd,	NULL,			NULL,	CMD_IS_SAFE},
+    {"modf",		ModFObjCmd,		NULL,			NULL,	CMD_IS_SAFE},
     {"package",		Tcl_PackageObjCmd,	NULL,			TclNRPackageObjCmd,	CMD_IS_SAFE},
     {"proc",		Tcl_ProcObjCmd,		NULL,			NULL,	CMD_IS_SAFE},
     {"regexp",		Tcl_RegexpObjCmd,	TclCompileRegexpCmd,	NULL,	CMD_IS_SAFE},
     {"regsub",		Tcl_RegsubObjCmd,	TclCompileRegsubCmd,	NULL,	CMD_IS_SAFE},
+    {"remquo",		RemQuoObjCmd,		NULL,			NULL,	CMD_IS_SAFE},
     {"rename",		Tcl_RenameObjCmd,	NULL,			NULL,	CMD_IS_SAFE},
     {"return",		Tcl_ReturnObjCmd,	TclCompileReturnCmd,	NULL,	CMD_IS_SAFE},
     {"scan",		Tcl_ScanObjCmd,		NULL,			NULL,	CMD_IS_SAFE},
@@ -428,6 +441,7 @@ static const EnsembleSetup ensembleCommands[] = {
     {"unicode",		tclUnicodeImplMap,	NULL, CMD_IS_SAFE},
     {"zipfs",		tclZipfsImplMap,	NULL, 0},
     {"zlib",		tclZlibImplMap,		NULL, CMD_IS_SAFE},
+    {"::tcl::unsupported::grapheme", tclGraphemeImplMap, NULL, CMD_IS_SAFE},
     {NULL, NULL, NULL, 0}
 };
 
@@ -437,8 +451,11 @@ static const EnsembleSetup ensembleCommands[] = {
 
 typedef double (BuiltinUnaryFunc)(double x);
 typedef double (BuiltinBinaryFunc)(double x, double y);
+typedef double (BuiltinBinaryDIFunc)(double x, int y);
 #define BINARY_TYPECAST(fn) \
 	(BuiltinUnaryFunc *)(void *)(BuiltinBinaryFunc *) fn
+#define BINARY_DI_TYPECAST(fn) \
+	(BuiltinUnaryFunc *)(void *)(BuiltinBinaryDIFunc *) fn
 typedef struct {
     const char *name;		/* Name of the function. The full name is
 				 * "::tcl::mathfunc::<name>". */
@@ -448,18 +465,30 @@ typedef struct {
 static const BuiltinFuncDef BuiltinFuncTable[] = {
     { "abs",	ExprAbsFunc,	NULL			},
     { "acos",	ExprUnaryFunc,	acos			},
+    { "acosh",	ExprUnaryFunc,	acosh			},
     { "asin",	ExprUnaryFunc,	asin			},
+    { "asinh",	ExprUnaryFunc,	asinh			},
     { "atan",	ExprUnaryFunc,	atan			},
+    { "atanh",	ExprUnaryFunc,	atanh			},
     { "atan2",	ExprBinaryFunc,	BINARY_TYPECAST(atan2)	},
     { "bool",	ExprBoolFunc,	NULL			},
+    { "cbrt",	ExprUnaryFunc,	cbrt			},
     { "ceil",	ExprCeilFunc,	NULL			},
+    { "copysign", ExprBinaryFunc, BINARY_TYPECAST(copysign)	},
     { "cos",	ExprUnaryFunc,	cos			},
     { "cosh",	ExprUnaryFunc,	cosh			},
+    { "dim",	ExprBinaryFunc,	BINARY_TYPECAST(fdim)	},
     { "double",	ExprDoubleFunc,	NULL			},
     { "entier",	ExprIntFunc,	NULL			},
+    { "erf",	ExprUnaryFunc,	erf			},
+    { "erfc",	ExprUnaryFunc,	erfc			},
     { "exp",	ExprUnaryFunc,	exp			},
+    { "exp2",	ExprUnaryFunc,	exp2			},
+    { "expm1",	ExprUnaryFunc,	expm1			},
     { "floor",	ExprFloorFunc,	NULL			},
+    { "fma",	ExprFmaFunc,	NULL			},
     { "fmod",	ExprBinaryFunc,	BINARY_TYPECAST(fmod)	},
+    { "gamma",	ExprUnaryFunc,	tgamma			},
     { "hypot",	ExprBinaryFunc,	BINARY_TYPECAST(hypot)	},
     { "int",	ExprIntFunc,	NULL			},
     { "isfinite", ExprIsFiniteFunc, NULL		},
@@ -469,19 +498,28 @@ static const BuiltinFuncDef BuiltinFuncTable[] = {
     { "isqrt",	ExprIsqrtFunc,	NULL			},
     { "issubnormal", ExprIsSubnormalFunc, NULL,		},
     { "isunordered", ExprIsUnorderedFunc, NULL,		},
+    { "ldexp",	ExprBinaryDIFunc, BINARY_DI_TYPECAST(ldexp)	},
+    { "lgamma",	ExprLgammaFunc,	NULL			},
     { "log",	ExprUnaryFunc,	log			},
     { "log10",	ExprUnaryFunc,	log10			},
+    { "log1p",	ExprUnaryFunc,	log1p			},
+    { "log2",	ExprUnaryFunc,	log2			},
+    { "logb",	ExprUnaryFunc,	logb			},
     { "max",	ExprMaxFunc,	NULL			},
     { "min",	ExprMinFunc,	NULL			},
+    { "nextafter", ExprBinaryFunc, BINARY_TYPECAST(nextafter)	},
     { "pow",	ExprBinaryFunc,	BINARY_TYPECAST(pow)	},
     { "rand",	ExprRandFunc,	NULL			},
+    { "remainder", ExprBinaryFunc, BINARY_TYPECAST(remainder)	},
     { "round",	ExprRoundFunc,	NULL			},
+    { "signbit", ExprSignBitFunc, NULL			},
     { "sin",	ExprUnaryFunc,	sin			},
     { "sinh",	ExprUnaryFunc,	sinh			},
     { "sqrt",	ExprSqrtFunc,	NULL			},
     { "srand",	ExprSrandFunc,	NULL			},
     { "tan",	ExprUnaryFunc,	tan			},
     { "tanh",	ExprUnaryFunc,	tanh			},
+    { "trunc",	ExprUnaryFunc,	trunc			},
     { "wide",	ExprWideFunc,	NULL			},
     { NULL, NULL, NULL }
 };
@@ -615,10 +653,9 @@ BuildInfoObjCmd2(
     void *clientData,
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     const char *buildData = (const char *) clientData;
-    char buf[80];
     const char *arg, *p, *q;
     Tcl_Size len;
     int idx;
@@ -649,9 +686,7 @@ BuildInfoObjCmd2(
     switch (idx) {
     case ID_PATCHLEVEL:
 	if ((p = strchr(buildData, '+')) != NULL) {
-	    memcpy(buf, buildData, p - buildData);
-	    buf[p - buildData] = '\0';
-	    Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, TCL_INDEX_NONE));
+	    Tcl_SetObjResult(interp, Tcl_NewStringObj(buildData, p - buildData));
 	}
 	return TCL_OK;
     case ID_VERSION:
@@ -661,17 +696,13 @@ BuildInfoObjCmd2(
 	    p = (q < r) ? q : r;
 	}
 	if (p != NULL) {
-	    memcpy(buf, buildData, p - buildData);
-	    buf[p - buildData] = '\0';
-	    Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, TCL_INDEX_NONE));
+	    Tcl_SetObjResult(interp, Tcl_NewStringObj(buildData, p - buildData));
 	}
 	return TCL_OK;
     case ID_COMMIT:
 	if ((p = strchr(buildData, '+')) != NULL) {
 	    if ((q = strchr(p++, '.')) != NULL) {
-		memcpy(buf, p, q - p);
-		buf[q - p] = '\0';
-		Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, TCL_INDEX_NONE));
+		Tcl_SetObjResult(interp, Tcl_NewStringObj(p, q - p));
 	    } else {
 		Tcl_SetObjResult(interp, Tcl_NewStringObj(p, TCL_INDEX_NONE));
 	    }
@@ -688,9 +719,7 @@ BuildInfoObjCmd2(
 		    || !strncmp(p, "icc-", 4)
 		    || !strncmp(p, "msvc-", 5)) {
 		if ((q = strchr(p, '.')) != NULL) {
-		    memcpy(buf, p, q - p);
-		    buf[q - p] = '\0';
-		    Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, TCL_INDEX_NONE));
+		    Tcl_SetObjResult(interp, Tcl_NewStringObj(p, q - p));
 		} else {
 		    Tcl_SetObjResult(interp, Tcl_NewStringObj(p, TCL_INDEX_NONE));
 		}
@@ -710,9 +739,7 @@ BuildInfoObjCmd2(
 		    if (!q) {
 			q = p + strlen(p);
 		    }
-		    memcpy(buf, p, q - p);
-		    buf[q - p] = '\0';
-		    Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, TCL_INDEX_NONE));
+		    Tcl_SetObjResult(interp, Tcl_NewStringObj(p, q - p));
 		} else {
 		    Tcl_SetObjResult(interp, Tcl_NewBooleanObj(1));
 		}
@@ -730,7 +757,7 @@ BuildInfoObjCmd(
     void *clientData,
     Tcl_Interp *interp,		/* Current interpreter. */
     int objc,			/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     return BuildInfoObjCmd2(clientData, interp, objc, objv);
 }
@@ -1288,7 +1315,7 @@ Tcl_CreateInterp(void)
 	Tcl_Panic("%s", Tcl_GetStringResult(interp));
     }
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
     /* Ignore failures, let [package require registry] fail instead */
     (void) Registry_Init(interp);
 #endif
@@ -1394,27 +1421,40 @@ HideCommandInTclNs(
     const char *name,
     Tcl_Obj *publicNameTuple)
 {
-    Tcl_Obj *cmdName = Tcl_ObjPrintf("::tcl::%s::%s", nsName, name);
-    Tcl_Obj *hideName = Tcl_ObjPrintf("tcl:%s:%s", nsName, name);
+    Tcl_DString cmd, hide;
+    Tcl_Size nsLen = strlen(nsName), nameLen = strlen(name);
+
+    Tcl_DStringInit(&cmd);
+    TclDStringAppendLiteral(&cmd, "::tcl::");
+    Tcl_DStringAppend(&cmd, nsName, nsLen);
+    TclDStringAppendLiteral(&cmd, "::");
+    Tcl_DStringAppend(&cmd, name, nameLen);
+
+    Tcl_DStringInit(&hide);
+    TclDStringAppendLiteral(&hide, "tcl:");
+    Tcl_DStringAppend(&hide, nsName, nsLen);
+    TclDStringAppendLiteral(&hide, ":");
+    Tcl_DStringAppend(&hide, name, nameLen);
 
 #define INTERIM_HACK_NAME "___tmp"
     // TODO: Fix the hiding machinery to handle namespaced commands.
 
-    if (TclRenameCommand(interp, TclGetString(cmdName),
+    if (TclRenameCommand(interp, Tcl_DStringValue(&cmd),
 		INTERIM_HACK_NAME) != TCL_OK
 	    || Tcl_HideCommand(interp, INTERIM_HACK_NAME,
-		    TclGetString(hideName)) != TCL_OK) {
+		    Tcl_DStringValue(&hide)) != TCL_OK) {
 	Tcl_Panic("problem making '%s %s' safe: %s",
 		nsName, name, Tcl_GetStringResult(interp));
     }
     if (publicNameTuple) {
 	Tcl_IncrRefCount(publicNameTuple);
-	Tcl_CreateObjCommand2(interp, TclGetString(cmdName),
+	Tcl_CreateObjCommand2(interp, Tcl_DStringValue(&cmd),
 		BadEnsembleSubcommand, (void *)publicNameTuple,
 		BadEnsembleSubcommandCleanup);
     }
-    TclDecrRefCount(cmdName);
-    TclDecrRefCount(hideName);
+
+    Tcl_DStringFree(&cmd);
+    Tcl_DStringFree(&hide);
 }
 
 int
@@ -1874,7 +1914,7 @@ DeleteInterpProc(
 
     /*
      * Punt if there is an error in the Tcl_Release/Tcl_Preserve matchup,
-	 * unless we are exiting.
+     * unless we are exiting.
      */
 
     if ((iPtr->numLevels > 0) && !TclInExit()) {
@@ -3018,7 +3058,7 @@ InvokeStringCommand(
     void *clientData,		/* Points to command's Command structure. */
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Command *cmdPtr = (Command *)clientData;
     int i;
@@ -3314,7 +3354,7 @@ InvokeObj2Command(
     void *clientData,		/* Points to command's Command structure. */
     Tcl_Interp *interp,		/* Current interpreter. */
     int objc,			/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     int result;
     Command *cmdPtr = (Command *)clientData;
@@ -3333,7 +3373,7 @@ CmdWrapper2Proc(
     void *clientData,
     Tcl_Interp *interp,
     int objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Command *cmdPtr = (Command *) clientData;
     return cmdPtr->objProc2(cmdPtr->objClientData2, interp, objc, objv);
@@ -4403,7 +4443,7 @@ Tcl_EvalObjv(
     Tcl_Interp *interp,		/* Interpreter in which to evaluate the
 				 * command. Also used for error reporting. */
     Tcl_Size objc,		/* Number of words in command. */
-    Tcl_Obj *const objv[],	/* An array of pointers to objects that are
+    Tcl_Obj *const *objv,	/* An array of pointers to objects that are
 				 * the words that make up the command. */
     int flags)			/* Collection of OR-ed bits that control the
 				 * evaluation of the script. Only
@@ -4422,7 +4462,7 @@ TclNREvalObjv(
     Tcl_Interp *interp,		/* Interpreter in which to evaluate the
 				 * command. Also used for error reporting. */
     Tcl_Size objc,		/* Number of words in command. */
-    Tcl_Obj *const objv[],	/* An array of pointers to objects that are
+    Tcl_Obj *const *objv,	/* An array of pointers to objects that are
 				 * the words that make up the command. */
     int flags,			/* Collection of OR-ed bits that control the
 				 * evaluation of the script. Only
@@ -4497,7 +4537,6 @@ EvalObjvCore(
      */
 
     if (iPtr->lookupNsPtr) {
-
 	/*
 	 * Capture the namespace we should do command name resolution in, as
 	 * instructed by our caller sneaking it in to us in a private interp
@@ -4513,7 +4552,6 @@ EvalObjvCore(
     } else if (flags & TCL_EVAL_INVOKE) {
 	lookupNsPtr = iPtr->globalNsPtr;
     } else {
-
 	/*
 	 * TCL_EVAL_INVOKE was not set: clear rewrite rules
 	 */
@@ -4741,7 +4779,7 @@ static void
 TEOV_PushExceptionHandlers(
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[],
+    Tcl_Obj *const *objv,
     int flags)
 {
     Interp *iPtr = (Interp *) interp;
@@ -4858,7 +4896,7 @@ static int
 TEOV_NotFound(
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[],
+    Tcl_Obj *const *objv,
     Namespace *lookupNsPtr)
 {
     Command * cmdPtr;
@@ -4986,7 +5024,7 @@ TEOV_RunEnterTraces(
     Command **cmdPtrPtr,
     Tcl_Obj *commandPtr,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Interp *iPtr = (Interp *) interp;
     Command *cmdPtr = *cmdPtrPtr;
@@ -5857,7 +5895,7 @@ TclArgumentRelease(
 void
 TclArgumentBCEnter(
     Tcl_Interp *interp,
-    Tcl_Obj *objv[],
+    Tcl_Obj **objv,
     Tcl_Size objc,
     void *codePtr,
     CmdFrame *cfPtr,
@@ -5930,7 +5968,7 @@ TclArgumentBCEnter(
 		/*
 		 * The object is already on the stack, however it may have
 		 * a different location now (literal sharing may map
-		 * multiple location to a single Tcl_Obj*. Save the old
+		 * multiple location to a single Tcl_Obj *. Save the old
 		 * information in the new structure.
 		 */
 
@@ -6267,7 +6305,7 @@ TclNREvalObjEx(
 	 * the script, and make it available to the direct script parser and
 	 * evaluator we are about to call, if so.
 	 *
-	 * It may be possible that the script Tcl_Obj* can be free'd while the
+	 * It may be possible that the script Tcl_Obj * can be free'd while the
 	 * evaluator is using it, leading to the release of the associated
 	 * ContLineLoc structure as well. To ensure that the latter doesn't
 	 * happen we set a lock on it. We release this lock later in this
@@ -6653,7 +6691,7 @@ TclObjInvoke(
     Tcl_Interp *interp,		/* Interpreter in which command is to be
 				 * invoked. */
     Tcl_Size objc,		/* Count of arguments. */
-    Tcl_Obj *const objv[],	/* Argument objects; objv[0] points to the
+    Tcl_Obj *const *objv,	/* Argument objects; objv[0] points to the
 				 * name of the command to invoke. */
     int flags)			/* Combination of flags controlling the call:
 				 * TCL_INVOKE_HIDDEN, TCL_INVOKE_NO_UNKNOWN,
@@ -6680,7 +6718,7 @@ TclNRInvoke(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Interp *iPtr = (Interp *) interp;
     Tcl_HashTable *hTblPtr;	/* Table of hidden commands. */
@@ -6989,6 +7027,99 @@ Tcl_GetVersion(
 /*
  *----------------------------------------------------------------------
  *
+ * TclRand --
+ *
+ *	Implementation of Tcl's built-in random number generator. This is not
+ *	suitable for cryptography, or even monte carlo simulation, but it's
+ *	good enough for many simple uses.
+ *
+ * Results:
+ *	A randomly chosen floating point number from the range [0..1).
+ *	The upper end-point of the range is never returned.
+ *
+ * Side effects:
+ *	Updates the current random number seed stored in the interpreter. If
+ *	the seed has not been initialised before in this interpreter, it will
+ *	be set to a value from the current time and thread ID.
+ *
+ *----------------------------------------------------------------------
+ */
+double
+TclRand(
+    Interp *iPtr)
+{
+    long tmp;			/* Algorithm assumes at least 32 bits. Only
+				 * long guarantees that. See below. */
+
+    if (!(iPtr->flags & RAND_SEED_INITIALIZED)) {
+	iPtr->flags |= RAND_SEED_INITIALIZED;
+
+	/*
+	 * To ensure different seeds in different threads (bug #416643),
+	 * take into consideration the thread this interp is running in.
+	 */
+
+	iPtr->randSeed = (long)TclpGetClicks() + (long)PTR2UINT(Tcl_GetCurrentThread()) * 4093U;
+
+	/*
+	 * Make sure 1 <= randSeed <= (2^31) - 2. See below.
+	 */
+
+	iPtr->randSeed &= 0x7FFFFFFFL;
+	if ((iPtr->randSeed == 0) || (iPtr->randSeed == 0x7FFFFFFFL)) {
+	    iPtr->randSeed ^= 123459876L;
+	}
+    }
+
+    /*
+     * Generate the random number using the linear congruential generator
+     * defined by the following recurrence:
+     *		seed = ( IA * seed ) mod IM
+     * where IA is 16807 and IM is (2^31) - 1. The recurrence maps a seed in
+     * the range [1, IM - 1] to a new seed in that same range. The recurrence
+     * maps IM to 0, and maps 0 back to 0, so those two values must not be
+     * allowed as initial values of seed.
+     *
+     * In order to avoid potential problems with integer overflow, the
+     * recurrence is implemented in terms of additional constants IQ and IR
+     * such that
+     *		IM = IA*IQ + IR
+     * None of the operations in the implementation overflows a 32-bit signed
+     * integer, and the C type long is guaranteed to be at least 32 bits wide.
+     *
+     * For more details on how this algorithm works, refer to the following
+     * papers:
+     *
+     *	S.K. Park & K.W. Miller, "Random number generators: good ones are hard
+     *	to find," Comm ACM 31(10):1192-1201, Oct 1988
+     *
+     *	W.H. Press & S.A. Teukolsky, "Portable random number generators,"
+     *	Computers in Physics 6(5):522-524, Sep/Oct 1992.
+     */
+
+#define RAND_IA		16807
+#define RAND_IM		2147483647
+#define RAND_IQ		127773
+#define RAND_IR		2836
+#define RAND_MASK	123459876
+
+    tmp = iPtr->randSeed/RAND_IQ;
+    iPtr->randSeed = RAND_IA*(iPtr->randSeed - tmp*RAND_IQ) - RAND_IR*tmp;
+    if (iPtr->randSeed < 0) {
+	iPtr->randSeed += RAND_IM;
+    }
+
+    /*
+     * Since the recurrence keeps seed values in the range [1, RAND_IM - 1],
+     * dividing by RAND_IM yields a double in the range (0, 1).
+     */
+
+    return (double)iPtr->randSeed * (1.0/RAND_IM);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
  * Math Functions --
  *
  *	This page contains the functions that implement all of the built-in
@@ -7004,6 +7135,28 @@ Tcl_GetVersion(
  *
  *----------------------------------------------------------------------
  */
+
+// Like Tcl_GetDoubleFromObj(), but may accept NaN as compile-time option.
+static inline int
+GetDoubleFuncArg(
+    Tcl_Interp *interp,
+    Tcl_Obj *objPtr,
+    double *d)
+{
+    int code = Tcl_GetDoubleFromObj(interp, objPtr, d);
+#ifdef ACCEPT_NAN
+    if (code != TCL_OK) {
+	const Tcl_ObjInternalRep *irPtr = TclFetchInternalRep(objPtr, &tclDoubleType);
+
+	if (irPtr) {
+	    *d = irPtr->doubleValue;
+	    Tcl_ResetResult(interp);
+	    code = TCL_OK;
+	}
+    }
+#endif
+    return code;
+}
 
 static int
 ExprCeilFunc(
@@ -7021,7 +7174,7 @@ ExprCeilFunc(
 	MathFuncWrongNumArgs(interp, 2, objc, objv);
 	return TCL_ERROR;
     }
-    code = Tcl_GetDoubleFromObj(interp, objv[1], &d);
+    code = GetDoubleFuncArg(interp, objv[1], &d);
 #ifdef ACCEPT_NAN
     if (code != TCL_OK) {
 	const Tcl_ObjInternalRep *irPtr = TclFetchInternalRep(objv[1], &tclDoubleType);
@@ -7261,23 +7414,63 @@ ExprUnaryFunc(
 	MathFuncWrongNumArgs(interp, 2, objc, objv);
 	return TCL_ERROR;
     }
-    code = Tcl_GetDoubleFromObj(interp, objv[1], &d);
-#ifdef ACCEPT_NAN
-    if (code != TCL_OK) {
-	const Tcl_ObjInternalRep *irPtr = TclFetchInternalRep(objv[1], &tclDoubleType);
-
-	if (irPtr) {
-	    d = irPtr->doubleValue;
-	    Tcl_ResetResult(interp);
-	    code = TCL_OK;
-	}
-    }
-#endif
+    code = GetDoubleFuncArg(interp, objv[1], &d);
     if (code != TCL_OK) {
 	return TCL_ERROR;
     }
     errno = 0;
     return CheckDoubleResult(interp, func(d));
+}
+
+static int
+ExprLgammaFunc(
+    TCL_UNUSED(void *),
+    Tcl_Interp *interp,		/* The interpreter in which to execute the
+				 * function. */
+    Tcl_Size objc,		/* Actual parameter count */
+    Tcl_Obj *const *objv)	/* Actual parameter list */
+{
+    double d, result;
+
+    if (objc != 2) {
+	MathFuncWrongNumArgs(interp, 2, objc, objv);
+	return TCL_ERROR;
+    }
+    int code = GetDoubleFuncArg(interp, objv[1], &d);
+    if (code != TCL_OK) {
+	return TCL_ERROR;
+    }
+    errno = 0;
+
+#ifdef _POSIX_VERSION
+    /*
+     * Stupid misfeatures time! POSIX requires that the sign of the result be
+     * stored in a global variable, signgam (that isn't universally available
+     * anyway, so we're not interested in it). That that is not a per-thread
+     * variable is very stupid indeed, but we're stuck with it. We make sure
+     * we hold a mutex when calling the function, even though we don't care at
+     * all about the global state it manages, since then we'll definitely be
+     * safe, whatever sort of stupidity is going on in the C library.
+     *
+     * We pay a bit of a penalty for this caution, but we'll worry about that
+     * if someone states they're calling the function frequently from multiple
+     * threads...
+     *
+     * Citations:
+     *  https://en.cppreference.com/w/c/numeric/math/lgamma.html
+     *  https://pubs.opengroup.org/onlinepubs/9699919799/functions/lgamma.html
+     */
+
+    TCL_DECLARE_MUTEX(lgammaMutex)
+    Tcl_MutexLock(&lgammaMutex);
+    result = lgamma(d);
+    Tcl_MutexUnlock(&lgammaMutex);
+#else
+    /* No such nonsense elsewhere. Thank goodness! */
+    result = lgamma(d);
+#endif
+
+    return CheckDoubleResult(interp, result);
 }
 
 static int
@@ -7325,38 +7518,47 @@ ExprBinaryFunc(
 	MathFuncWrongNumArgs(interp, 3, objc, objv);
 	return TCL_ERROR;
     }
-    code = Tcl_GetDoubleFromObj(interp, objv[1], &d1);
-#ifdef ACCEPT_NAN
-    if (code != TCL_OK) {
-	const Tcl_ObjInternalRep *irPtr = TclFetchInternalRep(objv[1], &tclDoubleType);
-
-	if (irPtr) {
-	    d1 = irPtr->doubleValue;
-	    Tcl_ResetResult(interp);
-	    code = TCL_OK;
-	}
-    }
-#endif
+    code = GetDoubleFuncArg(interp, objv[1], &d1);
     if (code != TCL_OK) {
 	return TCL_ERROR;
     }
-    code = Tcl_GetDoubleFromObj(interp, objv[2], &d2);
-#ifdef ACCEPT_NAN
-    if (code != TCL_OK) {
-	const Tcl_ObjInternalRep *irPtr = TclFetchInternalRep(objv[1], &tclDoubleType);
-
-	if (irPtr) {
-	    d2 = irPtr->doubleValue;
-	    Tcl_ResetResult(interp);
-	    code = TCL_OK;
-	}
-    }
-#endif
+    code = GetDoubleFuncArg(interp, objv[2], &d2);
     if (code != TCL_OK) {
 	return TCL_ERROR;
     }
     errno = 0;
     return CheckDoubleResult(interp, func(d1, d2));
+}
+
+static int
+ExprBinaryDIFunc(
+    void *clientData,		/* Contains the address of a function that
+				 * takes one double argument and one int
+				 * argument, and returns a double result. */
+    Tcl_Interp *interp,		/* The interpreter in which to execute the
+				 * function. */
+    Tcl_Size objc,		/* Actual parameter count. */
+    Tcl_Obj *const *objv)	/* Parameter vector. */
+{
+    int code;
+    double d1;
+    int i2;
+    BuiltinBinaryDIFunc *func = (BuiltinBinaryDIFunc *)clientData;
+
+    if (objc != 3) {
+	MathFuncWrongNumArgs(interp, 3, objc, objv);
+	return TCL_ERROR;
+    }
+    code = GetDoubleFuncArg(interp, objv[1], &d1);
+    if (code != TCL_OK) {
+	return TCL_ERROR;
+    }
+    code = Tcl_GetIntFromObj(interp, objv[2], &i2);
+    if (code != TCL_OK) {
+	return TCL_ERROR;
+    }
+    errno = 0;
+    return CheckDoubleResult(interp, func(d1, i2));
 }
 
 static int
@@ -7664,86 +7866,18 @@ ExprRandFunc(
     Tcl_Size objc,		/* Actual parameter count. */
     Tcl_Obj *const *objv)	/* Actual parameter vector. */
 {
-    Interp *iPtr = (Interp *) interp;
-    double dResult;
-    long tmp;			/* Algorithm assumes at least 32 bits. Only
-				 * long guarantees that. See below. */
-    Tcl_Obj *oResult;
-
     if (objc != 1) {
 	MathFuncWrongNumArgs(interp, 1, objc, objv);
 	return TCL_ERROR;
     }
 
-    if (!(iPtr->flags & RAND_SEED_INITIALIZED)) {
-	iPtr->flags |= RAND_SEED_INITIALIZED;
-
-	/*
-	 * To ensure different seeds in different threads (bug #416643),
-	 * take into consideration the thread this interp is running in.
-	 */
-
-	iPtr->randSeed = (long)TclpGetClicks() + (long)PTR2UINT(Tcl_GetCurrentThread()) * 4093U;
-
-	/*
-	 * Make sure 1 <= randSeed <= (2^31) - 2. See below.
-	 */
-
-	iPtr->randSeed &= 0x7FFFFFFFL;
-	if ((iPtr->randSeed == 0) || (iPtr->randSeed == 0x7FFFFFFFL)) {
-	    iPtr->randSeed ^= 123459876L;
-	}
-    }
-
-    /*
-     * Generate the random number using the linear congruential generator
-     * defined by the following recurrence:
-     *		seed = ( IA * seed ) mod IM
-     * where IA is 16807 and IM is (2^31) - 1. The recurrence maps a seed in
-     * the range [1, IM - 1] to a new seed in that same range. The recurrence
-     * maps IM to 0, and maps 0 back to 0, so those two values must not be
-     * allowed as initial values of seed.
-     *
-     * In order to avoid potential problems with integer overflow, the
-     * recurrence is implemented in terms of additional constants IQ and IR
-     * such that
-     *		IM = IA*IQ + IR
-     * None of the operations in the implementation overflows a 32-bit signed
-     * integer, and the C type long is guaranteed to be at least 32 bits wide.
-     *
-     * For more details on how this algorithm works, refer to the following
-     * papers:
-     *
-     *	S.K. Park & K.W. Miller, "Random number generators: good ones are hard
-     *	to find," Comm ACM 31(10):1192-1201, Oct 1988
-     *
-     *	W.H. Press & S.A. Teukolsky, "Portable random number generators,"
-     *	Computers in Physics 6(5):522-524, Sep/Oct 1992.
-     */
-
-#define RAND_IA		16807
-#define RAND_IM		2147483647
-#define RAND_IQ		127773
-#define RAND_IR		2836
-#define RAND_MASK	123459876
-
-    tmp = iPtr->randSeed/RAND_IQ;
-    iPtr->randSeed = RAND_IA*(iPtr->randSeed - tmp*RAND_IQ) - RAND_IR*tmp;
-    if (iPtr->randSeed < 0) {
-	iPtr->randSeed += RAND_IM;
-    }
-
-    /*
-     * Since the recurrence keeps seed values in the range [1, RAND_IM - 1],
-     * dividing by RAND_IM yields a double in the range (0, 1).
-     */
-
-    dResult = (double)iPtr->randSeed * (1.0/RAND_IM);
+    double dResult = TclRand((Interp *) interp);
 
     /*
      * Push a Tcl object with the result.
      */
 
+    Tcl_Obj *oResult;
     TclNewDoubleObj(oResult, dResult);
     Tcl_SetObjResult(interp, oResult);
     return TCL_OK;
@@ -7870,6 +8004,83 @@ ExprSrandFunc(
      */
 
     return ExprRandFunc(NULL, interp, 1, objv);
+}
+
+static int
+ExprFmaFunc(
+    TCL_UNUSED(void *),
+    Tcl_Interp *interp,		/* The interpreter in which to execute the
+				 * function. */
+    Tcl_Size objc,		/* Actual parameter count. */
+    Tcl_Obj *const *objv)	/* Parameter vector. */
+{
+    int code;
+    double d1, d2, d3;
+
+    if (objc != 4) {
+	MathFuncWrongNumArgs(interp, 4, objc, objv);
+	return TCL_ERROR;
+    }
+    code = GetDoubleFuncArg(interp, objv[1], &d1);
+    if (code != TCL_OK) {
+	return TCL_ERROR;
+    }
+    code = GetDoubleFuncArg(interp, objv[2], &d2);
+    if (code != TCL_OK) {
+	return TCL_ERROR;
+    }
+    code = GetDoubleFuncArg(interp, objv[3], &d3);
+    if (code != TCL_OK) {
+	return TCL_ERROR;
+    }
+    errno = 0;
+    return CheckDoubleResult(interp, fma(d1, d2, d3));
+}
+
+static int
+ExprSignBitFunc(
+    TCL_UNUSED(void *),
+    Tcl_Interp *interp,		/* The interpreter in which to execute the
+				 * function. */
+    Tcl_Size objc,		/* Actual parameter count */
+    Tcl_Obj *const *objv)	/* Actual parameter list */
+{
+    if (objc != 2) {
+	MathFuncWrongNumArgs(interp, 2, objc, objv);
+	return TCL_ERROR;
+    }
+
+    void *data;
+    int type;
+    if (Tcl_GetNumberFromObj(interp, objv[1], &data, &type) != TCL_OK) {
+	return TCL_ERROR;
+    }
+
+    bool bit;
+    switch (type) {
+    case TCL_NUMBER_DOUBLE:
+    case TCL_NUMBER_NAN: {
+	// Special case; handle NaN as conventional double
+	double d = *((double *) data);
+	bit = signbit(d);
+	break;
+    }
+    case TCL_NUMBER_INT: {
+	Tcl_WideInt i = *((Tcl_WideInt *) data);
+	bit = i < 0;
+	break;
+    }
+    case TCL_NUMBER_BIG: {
+	mp_int *bigPtr = (mp_int *) data;
+	bit = mp_isneg(bigPtr);
+	break;
+    }
+    default:
+	TCL_UNREACHABLE();
+    }
+
+    Tcl_SetObjResult(interp, Tcl_NewBooleanObj(bit));
+    return TCL_OK;
 }
 
 /*
@@ -8211,6 +8422,235 @@ FloatClassifyObjCmd(
 /*
  *----------------------------------------------------------------------
  *
+ * Misc Function-like Commands --
+ *
+ *	This page contains the commands that return multiple values. They'd
+ *	be things callable from [expr], except their results aren't directly
+ *	processable there.
+ *
+ * Results:
+ *	Each command returns TCL_OK if it succeeds and pushes an Tcl object
+ *	holding the result. If it fails it returns TCL_ERROR and leaves an
+ *	error message in the interpreter's result.
+ *
+ * Side effects:
+ *	None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+DivModObjCmd(
+    TCL_UNUSED(void *),
+    Tcl_Interp *interp,		/* The interpreter in which to execute the
+				 * function. */
+    Tcl_Size objc,		/* Actual parameter count */
+    Tcl_Obj *const *objv)	/* Actual parameter list */
+{
+    if (objc != 3) {
+	Tcl_WrongNumArgs(interp, 1, objv, "dividend divisor");
+	return TCL_ERROR;
+    }
+
+    int typeX, typeY;
+    void *dataX, *dataY;
+
+    if (Tcl_GetNumberFromObj(interp, objv[1], &dataX, &typeX) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if (typeX != TCL_NUMBER_INT && typeX != TCL_NUMBER_BIG) {
+	Tcl_SetObjResult(interp, Tcl_ObjPrintf("dividend must be an integer"));
+	Tcl_SetErrorCode(interp, "TCL", "VALUE", "INTEGER", NULL);
+	return TCL_ERROR;
+    }
+
+    if (Tcl_GetNumberFromObj(interp, objv[2], &dataY, &typeY) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if (typeY != TCL_NUMBER_INT && typeY != TCL_NUMBER_BIG) {
+	Tcl_SetObjResult(interp, Tcl_ObjPrintf("divisor must be an integer"));
+	Tcl_SetErrorCode(interp, "TCL", "VALUE", "INTEGER", NULL);
+	return TCL_ERROR;
+    }
+
+    if (typeX == TCL_NUMBER_BIG || typeY == TCL_NUMBER_BIG) {
+	mp_int x, y, quotientVal, remainderVal;
+
+	Tcl_GetBignumFromObj(NULL, objv[1], &x);
+	Tcl_GetBignumFromObj(NULL, objv[2], &y);
+	if (mp_iszero(&y)) {
+	    mp_clear(&x);
+	    mp_clear(&y);
+	    goto divZero;
+	}
+
+	int err = mp_init_multi(&quotientVal, &remainderVal, (void *)NULL);
+	if (err != MP_OKAY) {
+	    mp_clear(&x);
+	    mp_clear(&y);
+	    goto outOfMemory;
+	}
+	err = mp_div(&x, &y, &quotientVal, &remainderVal);
+	mp_clear(&x);
+	if ((err == MP_OKAY) && !mp_iszero(&remainderVal)
+		&& (remainderVal.sign != y.sign)) {
+	    /*
+	     * Convert to Tcl's integer division rules.
+	     */
+
+	    err = mp_sub_d(&quotientVal, 1, &quotientVal);
+	    if (err == MP_OKAY) {
+		err = mp_add(&remainderVal, &y, &remainderVal);
+	    }
+	}
+	mp_clear(&y);
+	if (err != MP_OKAY) {
+	    mp_clear(&quotientVal);
+	    mp_clear(&remainderVal);
+	    goto outOfMemory;
+	}
+
+	Tcl_Obj *result[] = {
+	    Tcl_NewBignumObj(&quotientVal),
+	    Tcl_NewBignumObj(&remainderVal)
+	};
+	Tcl_SetObjResult(interp, Tcl_NewListObj(2, result));
+	return TCL_OK;
+    } else {
+	Tcl_WideInt x, y, quotientVal, remainderVal;
+
+	(void) Tcl_GetWideIntFromObj(NULL, objv[1], &x);
+	(void) Tcl_GetWideIntFromObj(NULL, objv[2], &y);
+	if (y == 0) {
+	    goto divZero;
+	}
+
+	quotientVal = x / y;
+
+	/*
+	 * Force Tcl's integer division rules.
+	 * TODO: examine for logic simplification
+	 */
+
+	if (((quotientVal < 0) || ((quotientVal == 0) &&
+		((x < 0 && y > 0) || (x > 0 && y < 0)))) &&
+		((quotientVal * y) != y)) {
+	    quotientVal -= 1;
+	}
+
+	remainderVal = (Tcl_WideInt)((Tcl_WideUInt)x -
+		(Tcl_WideUInt)y * (Tcl_WideUInt)quotientVal);
+
+	Tcl_Obj *result[] = {
+	    Tcl_NewWideIntObj(quotientVal),
+	    Tcl_NewWideIntObj(remainderVal)
+	};
+	Tcl_SetObjResult(interp, Tcl_NewListObj(2, result));
+	return TCL_OK;
+    }
+
+  divZero:
+    Tcl_SetObjResult(interp, Tcl_ObjPrintf("divide by zero"));
+    Tcl_SetErrorCode(interp, "ARITH", "DIVZERO", "divide by zero", NULL);
+    return TCL_ERROR;
+  outOfMemory:
+    Tcl_SetObjResult(interp, Tcl_ObjPrintf("cannot allocate"));
+    Tcl_SetErrorCode(interp, "TCL", "MEMORY", NULL);
+    return TCL_ERROR;
+}
+
+static int
+FracExpObjCmd(
+    TCL_UNUSED(void *),
+    Tcl_Interp *interp,		/* The interpreter in which to execute the
+				 * function. */
+    Tcl_Size objc,		/* Actual parameter count */
+    Tcl_Obj *const *objv)	/* Actual parameter list */
+{
+    if (objc != 2) {
+	Tcl_WrongNumArgs(interp, 1, objv, "floatValue");
+	return TCL_ERROR;
+    }
+
+    double d;
+    if (Tcl_GetDoubleFromObj(interp, objv[1], &d) != TCL_OK) {
+	return TCL_ERROR;
+    }
+
+    int expPart;
+    double fracPart = frexp(d, &expPart);
+
+    Tcl_Obj *result[] = {
+	Tcl_NewDoubleObj(fracPart),
+	Tcl_NewIntObj(expPart)
+    };
+    Tcl_SetObjResult(interp, Tcl_NewListObj(2, result));
+    return TCL_OK;
+}
+
+static int
+ModFObjCmd(
+    TCL_UNUSED(void *),
+    Tcl_Interp *interp,		/* The interpreter in which to execute the
+				 * function. */
+    Tcl_Size objc,		/* Actual parameter count */
+    Tcl_Obj *const *objv)	/* Actual parameter list */
+{
+    if (objc != 2) {
+	Tcl_WrongNumArgs(interp, 1, objv, "floatValue");
+	return TCL_ERROR;
+    }
+
+    double d;
+    if (Tcl_GetDoubleFromObj(interp, objv[1], &d) != TCL_OK) {
+	return TCL_ERROR;
+    }
+
+    double integralPart, fracPart = modf(d, &integralPart);
+
+    Tcl_Obj *result[] = {
+	Tcl_NewDoubleObj(integralPart),
+	Tcl_NewDoubleObj(fracPart)
+    };
+    Tcl_SetObjResult(interp, Tcl_NewListObj(2, result));
+    return TCL_OK;
+}
+
+static int
+RemQuoObjCmd(
+    TCL_UNUSED(void *),
+    Tcl_Interp *interp,		/* The interpreter in which to execute the
+				 * function. */
+    Tcl_Size objc,		/* Actual parameter count */
+    Tcl_Obj *const *objv)	/* Actual parameter list */
+{
+    if (objc != 3) {
+	Tcl_WrongNumArgs(interp, 1, objv, "dividend divisor");
+	return TCL_ERROR;
+    }
+
+    double d1, d2;
+    if (Tcl_GetDoubleFromObj(interp, objv[1], &d1) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if (Tcl_GetDoubleFromObj(interp, objv[2], &d2) != TCL_OK) {
+	return TCL_ERROR;
+    }
+
+    int quoVal;
+    double remainderVal = remquo(d1, d2, &quoVal);
+
+    Tcl_Obj *result[] = {
+	Tcl_NewDoubleObj(remainderVal),
+	Tcl_NewIntObj(quoVal)
+    };
+    Tcl_SetObjResult(interp, Tcl_NewListObj(2, result));
+    return TCL_OK;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
  * MathFuncWrongNumArgs --
  *
  *	Generate an error message when a math function presents the wrong
@@ -8270,7 +8710,7 @@ DTraceObjCmd(
     TCL_UNUSED(void *),
     TCL_UNUSED(Tcl_Interp *),
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     if (TCL_DTRACE_TCL_PROBE_ENABLED()) {
 	char *a[10];
@@ -8417,7 +8857,7 @@ Tcl_NRCallObjProc2(
     Tcl_ObjCmdProc2 *objProc,
     void *clientData,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     NRE_callback *rootPtr = TOP_CB(interp);
 
@@ -8432,7 +8872,7 @@ WrapperNRObjProc(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     CmdWrapperInfo *info = (CmdWrapperInfo *) clientData;
     clientData = info->clientData;
@@ -8448,7 +8888,7 @@ Tcl_NRCallObjProc(
     Tcl_ObjCmdProc *objProc,
     void *clientData,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     if (objc > INT_MAX) {
 	Tcl_WrongNumArgs(interp, 1, objv, "?args?");
@@ -8500,7 +8940,7 @@ CmdWrapperNreProc(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     CmdWrapperInfo *info = (CmdWrapperInfo *) clientData;
 
@@ -8604,7 +9044,7 @@ Tcl_NREvalObjv(
     Tcl_Interp *interp,		/* Interpreter in which to evaluate the
 				 * command. Also used for error reporting. */
     Tcl_Size objc,		/* Number of words in command. */
-    Tcl_Obj *const objv[],	/* An array of pointers to objects that are
+    Tcl_Obj *const *objv,	/* An array of pointers to objects that are
 				 * the words that make up the command. */
     int flags)			/* Collection of OR-ed bits that control the
 				 * evaluation of the script. Only
@@ -8619,7 +9059,7 @@ Tcl_NRCmdSwap(
     Tcl_Interp *interp,
     Tcl_Command cmd,
     Tcl_Size objc,
-    Tcl_Obj *const objv[],
+    Tcl_Obj *const *objv,
     int flags)
 {
     return TclNREvalObjv(interp, objc, objv, flags|TCL_EVAL_NOERR,
@@ -8740,7 +9180,7 @@ TclNRTailcallObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Interp *iPtr = (Interp *) interp;
 
@@ -8902,7 +9342,7 @@ TclNRYieldObjCmd(
     void *clientData,
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     CoroutineData *corPtr = iPtr->execEnvPtr->corPtr;
 
@@ -8933,7 +9373,7 @@ TclNRYieldToObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     CoroutineData *corPtr = iPtr->execEnvPtr->corPtr;
     Tcl_Namespace *nsPtr = TclGetCurrentNamespace(interp);
@@ -9229,7 +9669,7 @@ CoroTypeObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     Command *cmdPtr;
     CoroutineData *corPtr;
@@ -9319,7 +9759,7 @@ TclNRCoroInjectObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     CoroutineData *corPtr;
 
@@ -9364,7 +9804,7 @@ TclNRCoroProbeObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     CoroutineData *corPtr;
 
@@ -9545,7 +9985,7 @@ TclNRInterpCoroutine(
     void *clientData,
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     CoroutineData *corPtr = (CoroutineData *)clientData;
 
@@ -9609,7 +10049,7 @@ TclNRCoroutineObjCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,		/* Current interpreter. */
     Tcl_Size objc,		/* Number of arguments. */
-    Tcl_Obj *const objv[])	/* Argument objects. */
+    Tcl_Obj *const *objv)	/* Argument objects. */
 {
     Command *cmdPtr;
     CoroutineData *corPtr;
@@ -9734,15 +10174,20 @@ TclNRCoroutineObjCmd(
 }
 
 /*
- * This is used in the [info] ensemble
+ *----------------------------------------------------------------------
+ *
+ * TclInfoCoroutineCmd --
+ *
+ *	Interpreted implementation of [info coroutine].
+ *
+ *----------------------------------------------------------------------
  */
-
 int
 TclInfoCoroutineCmd(
     TCL_UNUSED(void *),
     Tcl_Interp *interp,
     Tcl_Size objc,
-    Tcl_Obj *const objv[])
+    Tcl_Obj *const *objv)
 {
     CoroutineData *corPtr = iPtr->execEnvPtr->corPtr;
 

@@ -759,9 +759,14 @@ TclPathPart(
 }
 
 /*
- * Simple helper function
+ *----------------------------------------------------------------------
+ *
+ * GetExtension --
+ *
+ *	Simple helper function to make TclGetExtension() obj-aware.
+ *
+ *----------------------------------------------------------------------
  */
-
 static Tcl_Obj *
 GetExtension(
     Tcl_Obj *pathPtr)
@@ -837,7 +842,7 @@ Tcl_FSJoinPath(
 Tcl_Obj *
 TclJoinPath(
     Tcl_Size elements,		/* Number of elements to use */
-    Tcl_Obj *const objv[],	/* Path elements to join */
+    Tcl_Obj *const *objv,	/* Path elements to join */
     bool forceRelative)		/* If true, assume all more paths are
 				 * relative (e.g. simple normalization) */
 {
@@ -911,7 +916,6 @@ TclJoinPath(
 
 		    if ((tclPlatform != TCL_PLATFORM_WINDOWS)
 			    || (strchr(TclGetString(elt), '\\') == NULL)) {
-
 			if (PATHFLAGS(elt)) {
 			    return TclNewFSPathObj(elt, str, len, 0);
 			}
@@ -1083,7 +1087,15 @@ TclJoinPath(
 		}
 	    }
 
-	    if (length > 0 && ptr[length -1] != '/') {
+	    /*
+	     * The check against //zipfs: is required when joining relative
+	     * zipfs paths. For example, [file join c:/ //zipfs:foo]. See
+	     * [1215dca7] or tests filename-9.25.{3,4}. Unfortunately, bit
+	     * of a hack but Tcl lacks VFS abstractions to generalize this.
+	     * Happy to be proven wrong.
+	     */
+	    if (length > 0 && ptr[length - 1] != '/' &&
+		(length != 8 || strcmp(ptr, "//zipfs:"))) {
 		Tcl_AppendToObj(res, &separator, 1);
 		(void)TclGetStringFromObj(res, &length);
 	    }
@@ -1164,9 +1176,14 @@ Tcl_FSConvertToPathType(
 }
 
 /*
- * Helper function for normalization.
+ *----------------------------------------------------------------------
+ *
+ * IsSeparatorOrNull --
+ *
+ *	Helper function for normalization.
+ *
+ *----------------------------------------------------------------------
  */
-
 static bool
 IsSeparatorOrNull(
     int ch)
@@ -1178,17 +1195,22 @@ IsSeparatorOrNull(
     case TCL_PLATFORM_UNIX:
 	return (ch == '/');
     case TCL_PLATFORM_WINDOWS:
-	return ((ch == '/' || ch == '\\'));
+	return (ch == '/') || (ch == '\\');
     }
     return false;
 }
 
 /*
- * Helper function for SetFsPathFromAny. Returns position of first directory
- * delimiter in the path. If no separator is found, then returns the position
- * of the end of the string.
+ *----------------------------------------------------------------------
+ *
+ * FindSplitPos --
+ *
+ *	Helper function for SetFsPathFromAny. Returns position of first
+ *	directory delimiter in the path. If no separator is found, then
+ *	returns the position of the end of the string.
+ *
+ *----------------------------------------------------------------------
  */
-
 static Tcl_Size
 FindSplitPos(
     const char *path,
@@ -2192,7 +2214,7 @@ Tcl_FSEqualPaths(
 
     firstStr = TclGetStringFromObj(firstPtr, &firstLen);
     secondStr = TclGetStringFromObj(secondPtr, &secondLen);
-    return ((firstLen == secondLen) && !memcmp(firstStr, secondStr, firstLen));
+    return (firstLen == secondLen) && !memcmp(firstStr, secondStr, firstLen);
 }
 
 /*
@@ -2379,7 +2401,7 @@ UpdateStringOfFsPath(
 	    copy = Tcl_DuplicateObj(fsPathPtr->translatedPathPtr);
 	}
     } else {
-	    copy = AppendPath(fsPathPtr->cwdPtr, fsPathPtr->normPathPtr);
+	copy = AppendPath(fsPathPtr->cwdPtr, fsPathPtr->normPathPtr);
     }
 
     if (Tcl_IsShared(copy)) {
@@ -2470,8 +2492,8 @@ TclNativePathInFilesystem(
  *
  * MakeTildeRelativePath --
  *
- *      Returns a path relative to the home directory of a user.
- *      Note there is a difference between not specifying a user and
+ *	Returns a path relative to the home directory of a user.
+ *	Note there is a difference between not specifying a user and
  *	explicitly specifying the current user. This mimics Tcl8's tilde
  *	expansion.
  *
@@ -2549,7 +2571,7 @@ MakeTildeRelativePath(
  *	Wrapper around MakeTildeRelativePath. See that function.
  *
  * Results:
- *      Returns a Tcl_Obj containing the home directory of a user
+ *	Returns a Tcl_Obj containing the home directory of a user
  *	or NULL on failure with error message in interp if non-NULL.
  *
  *----------------------------------------------------------------------
@@ -2574,14 +2596,14 @@ TclGetHomeDirObj(
  *
  *	Copies the path passed in to the output Tcl_DString dsPtr,
  *	resolving leading ~ and ~user components in the path if present.
- *      An error is returned if such a component IS present AND cannot
- *      be resolved.
+ *	An error is returned if such a component IS present AND cannot
+ *	be resolved.
  *
  *	The output dsPtr must be cleared by caller on success.
  *
  * Results:
- *      TCL_OK - path did not contain leading ~ or it was successful resolved
- *      TCL_ERROR - ~ component could not be resolved.
+ *	TCL_OK - path did not contain leading ~ or it was successful resolved
+ *	TCL_ERROR - ~ component could not be resolved.
  *
  *----------------------------------------------------------------------
  */
@@ -2646,10 +2668,10 @@ Tcl_FSTildeExpand(
  *	begin with a tilde, returns as is.
  *
  * Results:
- *      Returns a Tcl_Obj with resolved path. This may be a new Tcl_Obj
+ *	Returns a Tcl_Obj with resolved path. This may be a new Tcl_Obj
  *	with ref count 0 or that pathObj that was passed in without its
  *	ref count modified.
- *      Returns NULL if the path begins with a ~ that cannot be resolved
+ *	Returns NULL if the path begins with a ~ that cannot be resolved
  *	and stores an error message in interp if non-NULL.
  *
  *----------------------------------------------------------------------
@@ -2685,9 +2707,9 @@ TclResolveTildePath(
  *	the paths with any ~-prefixed paths resolved.
  *
  *	Empty strings and ~-prefixed paths that cannot be resolved are
- *      removed from the returned list.
+ *	removed from the returned list.
  *
- *      The trailing components of the path are returned verbatim. No
+ *	The trailing components of the path are returned verbatim. No
  *	processing is done on them. Moreover, no assumptions should be
  *	made about the separators in the returned path. They may be /
  *	or native. Appropriate path manipulations functions should be

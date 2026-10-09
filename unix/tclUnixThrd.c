@@ -89,7 +89,7 @@ PMutexDestroy(
     PMutex *pmutexPtr)
 {
     pthread_mutex_destroy(&pmutexPtr->mutex);
-    assert(pthread_equal(pmutexPtr->thread, PTHREAD_NULL) && !pmutexPtr->counter);
+    assert(PTHREAD_NULL == pmutexPtr->thread && !pmutexPtr->counter);
 }
 
 static void
@@ -98,7 +98,7 @@ PMutexLock(
 {
     pthread_t mythread = pthread_self();
 
-    if (pthread_equal(pmutexPtr->thread, mythread)) {
+    if (PTHREAD_NULL != pmutexPtr->thread && pthread_equal(pmutexPtr->thread, mythread)) {
 	// We own the lock already, so it's recursive.
 	pmutexPtr->counter++;
     } else {
@@ -112,7 +112,7 @@ static void
 PMutexUnlock(
     PMutex *pmutexPtr)
 {
-    assert(pthread_equal(pmutexPtr->thread, pthread_self()));
+    assert(PTHREAD_NULL != pmutexPtr->thread && pthread_equal(pmutexPtr->thread, pthread_self()));
     if (pmutexPtr->counter) {
 	// It's recursive
 	pmutexPtr->counter--;
@@ -129,7 +129,7 @@ PCondWait(
 {
     pthread_t mythread = pthread_self();
 
-    assert(pthread_equal(pmutexPtr->thread, mythread));
+    assert(PTHREAD_NULL != pmutexPtr->thread && pthread_equal(pmutexPtr->thread, mythread));
     int counter = pmutexPtr->counter;
     pmutexPtr->counter = 0;
     pmutexPtr->thread = PTHREAD_NULL;
@@ -146,7 +146,7 @@ PCondTimedWait(
 {
     pthread_t mythread = pthread_self();
 
-    assert(pthread_equal(pmutexPtr->thread, mythread));
+    assert(PTHREAD_NULL != pmutexPtr->thread && pthread_equal(pmutexPtr->thread, mythread));
     int counter = pmutexPtr->counter;
     pmutexPtr->counter = 0;
     pmutexPtr->thread = PTHREAD_NULL;
@@ -642,7 +642,7 @@ TclpFinalizeMutex(
 /*
  *----------------------------------------------------------------------
  *
- * Tcl_ConditionWait --
+ * Tcl_ConditionWait2 --
  *
  *	This procedure is invoked to wait on a condition variable. The mutex
  *	is automically released as part of the wait, and automatically grabbed
@@ -662,10 +662,10 @@ TclpFinalizeMutex(
  */
 
 void
-Tcl_ConditionWait(
+Tcl_ConditionWait2(
     Tcl_Condition *condPtr,	/* Really (pthread_cond_t **) */
     Tcl_Mutex *mutexPtr,	/* Really (PMutex **) */
-    const Tcl_Time *timePtr)	/* Timeout on waiting period */
+    long long time)		/* Timeout on waiting period */
 {
     pthread_cond_t *pcondPtr;
     PMutex *pmutexPtr;
@@ -689,7 +689,7 @@ Tcl_ConditionWait(
     }
     pmutexPtr = *((PMutex **)mutexPtr);
     pcondPtr = *((pthread_cond_t **)condPtr);
-    if (timePtr == NULL) {
+    if (time < 0) {
 	PCondWait(pcondPtr, pmutexPtr);
     } else {
 	long long now;
@@ -699,10 +699,9 @@ Tcl_ConditionWait(
 	 * current time, including possible overflow situations. [Bug #411603]
 	 */
 
-	now = TclpGetMicroseconds();
-	ptime.tv_sec = timePtr->sec +
-		(timePtr->usec + now) / 1000000;
-	ptime.tv_nsec = 1000 * ((timePtr->usec + now) % 1000000);
+	now = Tcl_GetDayTime();
+	ptime.tv_sec = (time + now) / 1000000;
+	ptime.tv_nsec = 1000 * ((time + now) % 1000000);
 	PCondTimedWait(pcondPtr, pmutexPtr, &ptime);
     }
 }

@@ -5,7 +5,7 @@
  *	differences between Windows and Unix. It should be the only
  *	file that contains #ifdefs to handle different flavors of OS.
  *
- * Copyright (c) 1994-1997 Sun Microsystems, Inc.
+ * Copyright © 1994-1997 Sun Microsystems, Inc.
  *
  * See the file "license.terms" for information on usage and redistribution
  * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
@@ -59,7 +59,7 @@ typedef DWORD_PTR * PDWORD_PTR;
 #endif
 
 /*
- *  Pull in the typedef of TCHAR for windows.
+ * Pull in the typedef of TCHAR for windows.
  */
 #include <tchar.h>
 #ifndef _TCHAR_DEFINED

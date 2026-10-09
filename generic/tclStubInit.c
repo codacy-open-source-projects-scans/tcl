@@ -331,7 +331,7 @@ TclpGetPid(Tcl_Pid pid)
 /* On Cygwin, long is 64-bit while on Win64 long is 32-bit. Therefore we have
  * to make sure that all stub entries on Cygwin follow the Win64 signature.
  */
-#define Tcl_GetLongFromObj (int(*)(Tcl_Interp*,Tcl_Obj*,long*))(void *)Tcl_GetIntFromObj
+#define Tcl_GetLongFromObj (int(*)(Tcl_Interp *,Tcl_Obj *,long *))(void *)Tcl_GetIntFromObj
 static int exprInt(Tcl_Interp *interp, const char *expr, int *ptr){
     long longValue;
     int result = Tcl_ExprLong(interp, expr, &longValue);
@@ -347,8 +347,8 @@ static int exprInt(Tcl_Interp *interp, const char *expr, int *ptr){
     }
     return result;
 }
-#define Tcl_ExprLong (int(*)(Tcl_Interp*,const char*,long*))(void *)exprInt
-static int exprIntObj(Tcl_Interp *interp, Tcl_Obj*expr, int *ptr){
+#define Tcl_ExprLong (int(*)(Tcl_Interp *, const char *,long *))(void *)exprInt
+static int exprIntObj(Tcl_Interp *interp, Tcl_Obj *expr, int *ptr){
     long longValue;
     int result = Tcl_ExprLongObj(interp, expr, &longValue);
     if (result == TCL_OK) {
@@ -363,7 +363,7 @@ static int exprIntObj(Tcl_Interp *interp, Tcl_Obj*expr, int *ptr){
     }
     return result;
 }
-#define Tcl_ExprLongObj (int(*)(Tcl_Interp*,Tcl_Obj*,long*))(void *)exprIntObj
+#define Tcl_ExprLongObj (int(*)(Tcl_Interp *, Tcl_Obj *,long *))(void *)exprIntObj
 
 #else /* __CYGWIN__ */
 #   define TclWinGetTclInstance 0
@@ -837,7 +837,7 @@ const TclStubs tclStubs = {
     Tcl_DbNewByteArrayObj, /* 23 */
     Tcl_DbNewDoubleObj, /* 24 */
     Tcl_DbNewListObj, /* 25 */
-    0, /* 26 */
+    Tcl_SetTimer2, /* 26 */
     Tcl_DbNewObj, /* 27 */
     Tcl_DbNewStringObj, /* 28 */
     Tcl_DuplicateObj, /* 29 */
@@ -847,7 +847,7 @@ const TclStubs tclStubs = {
     0, /* 33 */
     Tcl_GetDouble, /* 34 */
     Tcl_GetDoubleFromObj, /* 35 */
-    0, /* 36 */
+    Tcl_WaitForEvent2, /* 36 */
     Tcl_GetInt, /* 37 */
     Tcl_GetIntFromObj, /* 38 */
     Tcl_GetLongFromObj, /* 39 */
@@ -860,10 +860,10 @@ const TclStubs tclStubs = {
     Tcl_ListObjIndex, /* 46 */
     TclListObjLength, /* 47 */
     Tcl_ListObjReplace, /* 48 */
-    0, /* 49 */
+    Tcl_SetMaxBlockTime2, /* 49 */
     Tcl_NewByteArrayObj, /* 50 */
     Tcl_NewDoubleObj, /* 51 */
-    0, /* 52 */
+    Tcl_ConditionWait2, /* 52 */
     Tcl_NewListObj, /* 53 */
     0, /* 54 */
     Tcl_NewObj, /* 55 */
@@ -874,7 +874,7 @@ const TclStubs tclStubs = {
     Tcl_SetDoubleObj, /* 60 */
     0, /* 61 */
     Tcl_SetListObj, /* 62 */
-    0, /* 63 */
+    Tcl_LimitSetTime2, /* 63 */
     Tcl_SetObjLength, /* 64 */
     Tcl_SetStringObj, /* 65 */
     0, /* 66 */
@@ -887,8 +887,8 @@ const TclStubs tclStubs = {
     Tcl_AsyncInvoke, /* 73 */
     Tcl_AsyncMark, /* 74 */
     Tcl_AsyncReady, /* 75 */
-    0, /* 76 */
-    0, /* 77 */
+    Tcl_LimitGetTime2, /* 76 */
+    Tcl_GetDayTime, /* 77 */
     Tcl_BadChannelOption, /* 78 */
     Tcl_CallWhenDeleted, /* 79 */
     Tcl_CancelIdleCall, /* 80 */
@@ -1510,7 +1510,10 @@ const TclStubs tclStubs = {
     Tcl_UtfToNormalized, /* 696 */
     Tcl_ExternalToUtfEx, /* 697 */
     Tcl_UtfToExternalEx, /* 698 */
-    TclUnusedStubEntry, /* 699 */
+    Tcl_RegisterPostInitProc, /* 699 */
+    Tcl_UnregisterPostInitProc, /* 700 */
+    Tcl_ClearPostInitProcs, /* 701 */
+    TclUnusedStubEntry, /* 702 */
 };
 
 /* !END!: Do not edit above this line. */

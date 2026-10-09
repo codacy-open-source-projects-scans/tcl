@@ -15,9 +15,9 @@
 
 /* Workaround for mingw versions which don't provide this in float.h */
 #ifndef _MCW_EM
-#   define	_MCW_EM		0x0008001F	/* Error masks */
-#   define	_MCW_RC		0x00000300	/* Rounding */
-#   define	_MCW_PC		0x00030000	/* Precision */
+#   define _MCW_EM	0x0008001F	/* Error masks */
+#   define _MCW_RC	0x00000300	/* Rounding */
+#   define _MCW_PC	0x00030000	/* Precision */
 _CRTIMP unsigned int __cdecl _controlfp (unsigned int unNew, unsigned int unMask);
 #endif
 
@@ -613,7 +613,7 @@ TclpFinalizeMutex(
 /*
  *----------------------------------------------------------------------
  *
- * Tcl_ConditionWait --
+ * Tcl_ConditionWait2 --
  *
  *	This procedure is invoked to wait on a condition variable. The mutex
  *	is atomically released as part of the wait, and automatically grabbed
@@ -633,19 +633,19 @@ TclpFinalizeMutex(
  */
 
 void
-Tcl_ConditionWait(
+Tcl_ConditionWait2(
     Tcl_Condition *condPtr,	/* Really (WinCondition **) */
     Tcl_Mutex *mutexPtr,	/* Really (CRITICAL_SECTION **) */
-    const Tcl_Time *timePtr)	/* Timeout on waiting period */
+    long long time)		/* Timeout on waiting period */
 {
     CONDITION_VARIABLE *cvPtr;	/* Per-condition queue head */
     WMutex *wmPtr;		/* Caller's Mutex, after casting */
     DWORD wtime;		/* Windows time value */
 
-    if (timePtr == NULL) {
+    if (time < 0) {
 	wtime = INFINITE;
     } else {
-	wtime = (DWORD)timePtr->sec * 1000 + (DWORD)timePtr->usec / 1000;
+	wtime = (DWORD)time / 1000;
     }
 
     if (*condPtr == NULL) {
@@ -666,13 +666,12 @@ Tcl_ConditionWait(
     DWORD mythread = GetCurrentThreadId();
     assert(wmPtr->thread == mythread);
     wmPtr->thread = 0;
-    if (SleepConditionVariableCS(cvPtr,
-	    &wmPtr->crit, wtime) == 0) {
+    if (SleepConditionVariableCS(cvPtr, &wmPtr->crit, wtime) == 0) {
 	DWORD err = GetLastError();
 	if (err != ERROR_TIMEOUT) {
 	    Tcl_Panic(
-		"Tcl_ConditionWait: SleepConditionVariableCS error %lu",
-		err);
+		    "Tcl_ConditionWait: SleepConditionVariableCS error %lu",
+		    err);
 	}
     }
 
