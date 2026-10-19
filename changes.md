@@ -10,8 +10,37 @@ Tcl patch releases have the primary purpose of delivering bug fixes
 to the userbase.
 
 # Bug fixes
+ - [regexp sometimes allows an invalid backref to be matched](https://core.tcl-lang.org/tcl/tktview/75c9d9)
+ - [regexp -all did not try to match at the end of the string](https://core.tcl-lang.org/tcl/tktview/b73f12)
+ - [regexp/regsub -all restarted matching on the substring after the previous match](https://core.tcl-lang.org/tcl/tktview/471101)
+ - [with REG_BOSONLY only the first alternative was anchored at the beginning of the string](https://core.tcl-lang.org/tcl/tktview/117854)
+ - [TclUnixWaitForFile: infinite wait may return early](https://core.tcl-lang.org/tcl/tktview/49538c)
+ - [lsearch -regexp released the pattern when matching failed](https://core.tcl-lang.org/tcl/tktview/359576)
+ - [restore the blocking mode when "socket -async" connects at once](https://core.tcl-lang.org/tcl/tktview/d22dc7)
+ - [compiled [clock clicks -mi] should give "ambiguous option" error](https://core.tcl-lang.org/tcl/tktview/1ae976)
+ - [writing a file beyond the file size limit (ulimit -f) killed the process](https://core.tcl-lang.org/tcl/tktview/386563)
+ - [Incorrect argument handling by [regexp]](https://core.tcl-lang.org/tcl/tktview/697b1b)
+ - [compiled regexp behaves differently](https://core.tcl-lang.org/tcl/tktview/190289)
+ - [a {1,1} quantifier was always dropped as vacuous](https://core.tcl-lang.org/tcl/tktview/524b35)
+ - [regexp with backreferences could loop forever](https://core.tcl-lang.org/tcl/tktview/a6029e)
+ - [remove empty directories from the zipfs VFS with POSIX find options](https://core.tcl-lang.org/tcl/tktview/9336f1)
+ - [tailcall panicked in a command called directly by its objProc](https://core.tcl-lang.org/tcl/tktview/4955f5)
+ - [compiled [self n] should be ambiguous](https://core.tcl-lang.org/tcl/tktview/8ab06e)
+ - [difference between bcc'ed and eval'ed regexp](https://core.tcl-lang.org/tcl/tktview/306945)
+ - [regsub always asked the regexp engine for 10 submatches](https://core.tcl-lang.org/tcl/tktview/446565)
+ - [regsub -command panics with more than 9 capturing groups](https://core.tcl-lang.org/tcl/tktview/41bc9a)
+ - [Problem with ::http::OpenSocket](https://core.tcl-lang.org/tcl/tktview/0c1e91)
+ - [on Windows a joinable thread which exits before it is joined leaked](https://core.tcl-lang.org/tcl/tktview/338137)
+ - [on Unix, Tcl_JoinThread() should not call pthread_join() for detached threads](https://core.tcl-lang.org/tcl/tktview/5974ff)
+ - [zlib-8.3 and zlib-9.3 connected to localhost](https://core.tcl-lang.org/tcl/tktview/81cb2b)
+ - [zipfs channels never generated file events](https://core.tcl-lang.org/tcl/tktview/0654ce)
+ - [interp create resets the system encoding set by encoding system](https://core.tcl-lang.org/tcl/tktview/63941f)
+ - [traceback using clock format with locale of he_IL](https://core.tcl-lang.org/tcl/tktview/301613)
+ - [he locale: BCE and CE era names are swapped](https://core.tcl-lang.org/tcl/tktview/58bae8)
+ - [format %A garbles negative, padded and infinite values](https://core.tcl-lang.org/tcl/tktview/2dff98)
 
 # Updated bundled packages, libraries, standards, data
+ - http 2.10.3
  - msgcat 1.7.2
  - tzcode 2026e
 
